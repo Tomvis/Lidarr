@@ -271,6 +271,21 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
                             }
 
                             trackFile.Id = previousFile.Id;
+
+                            // A rescan builds the file from disk alone. Keep what the download told us,
+                            // or custom formats score the bare filename and every search finds an "upgrade".
+                            trackFile.SceneName = previousFile.SceneName;
+                            trackFile.OriginalFilePath = previousFile.OriginalFilePath;
+
+                            if (trackFile.ReleaseGroup.IsNullOrWhiteSpace())
+                            {
+                                trackFile.ReleaseGroup = previousFile.ReleaseGroup;
+                            }
+
+                            if (trackFile.IndexerFlags == 0)
+                            {
+                                trackFile.IndexerFlags = previousFile.IndexerFlags;
+                            }
                         }
 
                         try

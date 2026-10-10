@@ -282,6 +282,61 @@ namespace NzbDrone.Core.Test.MediaFiles
         }
 
         [Test]
+        public void should_keep_download_provenance_when_reusing_trackfile()
+        {
+            var previousFile = Builder<TrackFile>.CreateNew()
+                .With(f => f.Id = 42)
+                .With(f => f.SceneName = "Artist - Album (2014) [FLAC 24bit] [WEB]")
+                .With(f => f.OriginalFilePath = "Artist - Album (2014) [FLAC 24bit] [WEB]/01 - Track.flac")
+                .With(f => f.ReleaseGroup = "ENRiCH")
+                .With(f => f.IndexerFlags = IndexerFlags.Freeleech)
+                .Build();
+
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFileWithPath(It.IsAny<string>()))
+                .Returns(previousFile);
+
+            var track = _approvedDecisions.First();
+            track.Item.ExistingFile = true;
+            track.Item.ReleaseGroup = null;
+            track.Item.IndexerFlags = 0;
+
+            Subject.Import(new List<ImportDecision<LocalTrack>> { track }, false);
+
+            // a rescan after a retag builds the file from disk alone; without the release name its
+            // custom formats score from the bare filename and any search finds an "upgrade"
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Update(It.Is<List<TrackFile>>(l => l.Count == 1 &&
+                                                                    l[0].SceneName == previousFile.SceneName &&
+                                                                    l[0].OriginalFilePath == previousFile.OriginalFilePath &&
+                                                                    l[0].ReleaseGroup == "ENRiCH" &&
+                                                                    l[0].IndexerFlags == IndexerFlags.Freeleech)),
+                        Times.Once());
+        }
+
+        [Test]
+        public void should_prefer_rescanned_release_group_when_reusing_trackfile()
+        {
+            var previousFile = Builder<TrackFile>.CreateNew()
+                .With(f => f.Id = 42)
+                .With(f => f.ReleaseGroup = "OLD")
+                .Build();
+
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFileWithPath(It.IsAny<string>()))
+                .Returns(previousFile);
+
+            var track = _approvedDecisions.First();
+            track.Item.ExistingFile = true;
+            track.Item.ReleaseGroup = "NEW";
+
+            Subject.Import(new List<ImportDecision<LocalTrack>> { track }, false);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Update(It.Is<List<TrackFile>>(l => l.Count == 1 && l[0].ReleaseGroup == "NEW")), Times.Once());
+        }
+
+        [Test]
         public void should_include_scene_name_with_new_downloads()
         {
             var firstDecision = _approvedDecisions.First();
