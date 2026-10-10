@@ -98,6 +98,29 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             Subject.IsSatisfiedBy(_parseResultSingle, null).Accepted.Should().BeTrue();
         }
 
+        // Tomvis fork (MUSIC-64): a low-quality file of a track the album doesn't want doesn't make an upgrade
+        [Test]
+        public void should_ignore_files_of_unwanted_tracks()
+        {
+            _firstFile.Id = 1;
+            _secondFile.Id = 2;
+            WithSecondFileUpgradable();
+            _parseResultSingle.Albums[0].AlbumReleases = new List<AlbumRelease>
+            {
+                new AlbumRelease
+                {
+                    Monitored = true,
+                    Tracks = new List<Track>
+                    {
+                        new Track { Monitored = true, TrackFileId = 1 },
+                        new Track { Monitored = false, TrackFileId = 2 }
+                    }
+                }
+            };
+
+            Subject.IsSatisfiedBy(_parseResultSingle, null).Accepted.Should().BeFalse();
+        }
+
         [Test]
         public void should_return_true_if_track_is_missing()
         {

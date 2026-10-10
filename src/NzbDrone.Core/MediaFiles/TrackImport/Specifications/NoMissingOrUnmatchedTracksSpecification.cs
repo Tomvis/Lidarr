@@ -1,3 +1,4 @@
+using System.Linq;
 using NLog;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Download;
@@ -22,7 +23,8 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Specifications
                 return Decision.Reject("Has unmatched tracks");
             }
 
-            if (item.NewDownload && item.TrackMapping.MBExtra.Count > 0)
+            // Tomvis fork (MUSIC-64): tracks the album doesn't want aren't missing
+            if (item.NewDownload && item.TrackMapping.MBExtra.Any(t => t.Monitored))
             {
                 _logger.Debug("This release is missing tracks. Skipping {0}", item);
                 return Decision.Reject("Has missing tracks");

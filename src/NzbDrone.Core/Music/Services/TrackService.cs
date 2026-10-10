@@ -25,7 +25,7 @@ namespace NzbDrone.Core.Music
         void UpdateMany(List<Track> tracks);
         void DeleteMany(List<Track> tracks);
         void SetFileIds(List<Track> tracks);
-        List<Track> SetMonitored(IEnumerable<int> trackIds, bool monitored);
+        void UpdateMonitored(List<Track> tracks);
         void CarryOverMonitoring(List<Track> previousReleaseTracks, List<Track> newReleaseTracks);
     }
 
@@ -124,14 +124,9 @@ namespace NzbDrone.Core.Music
             _trackRepository.SetFileId(tracks);
         }
 
-        // Tomvis fork (MUSIC-64): want or unwant single tracks
-        public List<Track> SetMonitored(IEnumerable<int> trackIds, bool monitored)
+        public void UpdateMonitored(List<Track> tracks)
         {
-            var tracks = _trackRepository.Get(trackIds).ToList();
-            var changed = tracks.Where(t => t.Monitored != monitored).ToList();
-            changed.ForEach(t => t.Monitored = monitored);
-            _trackRepository.SetMonitored(changed);
-            return tracks;
+            _trackRepository.SetMonitored(tracks);
         }
 
         // Tomvis fork (MUSIC-64): when an album that wants only some tracks moves to another release,

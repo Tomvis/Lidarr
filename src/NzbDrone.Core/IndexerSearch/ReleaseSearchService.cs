@@ -90,6 +90,15 @@ namespace NzbDrone.Core.IndexerSearch
                 searchSpec.Disambiguation = album.Disambiguation;
             }
 
+            // Tomvis fork (MUSIC-64): an album that wants only some tracks names the ones it still needs
+            if (WantedTracks.IsPartial(album))
+            {
+                searchSpec.Tracks = AlbumEditions.Monitored(album.AlbumReleases.Value)
+                    .SelectMany(r => r.Tracks.Value)
+                    .Where(t => t.Monitored && !t.HasFile)
+                    .ToList();
+            }
+
             var decisions = await Dispatch(indexer => indexer.Fetch(searchSpec), searchSpec);
             downloadDecisions.AddRange(decisions);
 

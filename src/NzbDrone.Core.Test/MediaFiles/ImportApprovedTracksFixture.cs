@@ -423,5 +423,22 @@ namespace NzbDrone.Core.Test.MediaFiles
             _approvedDecisions.First().Item.Album.AlbumReleases.Value.Should().OnlyContain(r => r.Monitored);
             extra.Monitored.Should().BeTrue();
         }
+
+        // Tomvis fork (MUSIC-64): importing wanted tracks of an album that wants only some must not recycle the rest
+        [Test]
+        public void should_not_replace_other_files_of_an_album_that_wants_only_some_tracks()
+        {
+            var editionFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            var otherFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 11).Build();
+            var release = _approvedDecisions.First().Item.Release;
+            release.Id = 1;
+            release.Tracks = new List<Track> { new Track { Monitored = true }, new Track { Monitored = false } };
+            GivenExistingFiles(editionFile, otherFile);
+
+            Subject.Import(_approvedDecisions, true);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.IsAny<TrackFile>(), It.IsAny<DeleteMediaFileReason>()), Times.Never());
+        }
     }
 }

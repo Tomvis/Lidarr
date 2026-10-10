@@ -183,8 +183,8 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Identification
 
             Logger.Trace("after trackMapping: {0}", dist.NormalizedDistance());
 
-            // missing tracks
-            foreach (var track in mapping.MBExtra.Take(localTracks.Count))
+            // missing tracks (Tomvis fork, MUSIC-64: not the ones the album doesn't want)
+            foreach (var track in mapping.MBExtra.Where(t => t.Monitored).Take(localTracks.Count))
             {
                 dist.Add("missing_tracks", 1.0);
             }

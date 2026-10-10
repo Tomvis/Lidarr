@@ -133,7 +133,9 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
                     continue;
                 }
 
-                if (replaceExisting)
+                // Tomvis fork (MUSIC-64): an album that wants only some tracks keeps its other files;
+                // each imported track replaces only its own file (UpgradeTrackFile)
+                if (replaceExisting && !WantedTracks.IsPartial(newRelease))
                 {
                     RemoveExistingTrackFiles(artist, album, _mediaFileService.GetFilesByAlbum(album.Id));
                 }

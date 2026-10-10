@@ -24,3 +24,14 @@ Branch `enhanced` = upstream `develop` tag + fork commits. forksync (.120) rebas
 
 - A rescan that reuses a TrackFile row (MUSIC-66) keeps its `SceneName`, `OriginalFilePath`, and its `ReleaseGroup`/`IndexerFlags` when the rescan finds none. Upstream rebuilt the row from disk alone, so every beets retag wiped the release name; custom formats then scored the bare filename and searches approved CF-only "upgrades" of the same release.
 - 2026-10-10 one-off backfill: 20,633/24,472 rows got `SceneName` from the grab their track's latest import came from (History `TrackFileImported.DownloadId` → `Grabbed`/`DownloadImported` title). Pre-backfill dump: `/mnt/Fast/backups/postgres/adhoc-music68-20261010-2019/`.
+
+## Wanted tracks (MUSIC-64, phase 1: core)
+
+- `Tracks.Monitored` (migration 1000, default true): an album can want only some tracks of its monitored release. All wanted = upstream behaviour. Helpers: `NzbDrone.Core/Music/WantedTracks.cs`.
+- API: `PUT /api/v1/track/monitor {trackIds, monitored}`; `TrackResource.monitored`. Wanting a track of an unmonitored album monitors the album for that track only; unwanting its last wanted track unmonitors the album and resets its tracks to wanted. Tracks must be on the album's monitored release (400 otherwise).
+- Missing/cutoff/stats, `TracksWithoutFiles`, upgrade and cutoff specs count only wanted tracks and their files.
+- Import of a new download: unwanted files are rejected (`TrackWantedSpecification`); missing unwanted tracks neither reject (`NoMissingOrUnmatchedTracksSpecification`) nor add distance; another release can't stand in (`ReleaseWantedSpecification`, even with `anyReleaseOk`); the album's other files are not recycled (only replaced tracks are); completion = every wanted track imported.
+- Refresh keeps the flag: merges keep it, MusicBrainz-added tracks of a partial release start unwanted, and a monitored-release switch carries wanted recordings over (`TrackService.CarryOverMonitoring`).
+- Search: `AlbumSearchCriteria.Tracks` = wanted tracks without files when the album is partial (null otherwise) for indexer plugins.
+- Webhooks: tracks carry `mbId`, `recordingMbId`, `mediumNumber`, `absoluteTrackNumber`; `album.albumRelease.wantedTracks` lists the wanted tracks of a partial release (null when all are wanted).
+- Not done yet: per-source single-track search/download (Tidal plugin, slskd, YouTube Music, qBittorrent file priorities), wanted-track list in Grabbed history for download clients, UI.

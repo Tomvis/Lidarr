@@ -148,5 +148,56 @@ namespace NzbDrone.Core.Test.NotificationTests
 
             payload.Album.AlbumRelease.Should().BeNull();
         }
+
+        // Tomvis fork (MUSIC-64): a release that wants only some tracks lists them, so a partial import is expected
+        [Test]
+        public void grab_should_list_wanted_tracks_when_release_wants_only_some()
+        {
+            _main.Tracks = new List<Track>
+            {
+                new Track { Id = 1, ForeignTrackId = "t1", ForeignRecordingId = "r1", Title = "One", TrackNumber = "1", AbsoluteTrackNumber = 1, MediumNumber = 1, Monitored = false },
+                new Track { Id = 2, ForeignTrackId = "t2", ForeignRecordingId = "r2", Title = "Two", TrackNumber = "2", AbsoluteTrackNumber = 2, MediumNumber = 1, Monitored = true }
+            };
+
+            var payload = Subject.BuildOnGrabPayload(GrabMessage());
+
+            var wanted = payload.Albums[0].AlbumRelease.WantedTracks;
+            wanted.Should().HaveCount(1);
+            wanted[0].MBId.Should().Be("t2");
+            wanted[0].RecordingMBId.Should().Be("r2");
+            wanted[0].MediumNumber.Should().Be(1);
+            wanted[0].AbsoluteTrackNumber.Should().Be(2);
+        }
+
+        [Test]
+        public void grab_should_omit_wanted_tracks_when_release_wants_every_track()
+        {
+            _main.Tracks = new List<Track> { new Track { Id = 1, Monitored = true } };
+
+            var payload = Subject.BuildOnGrabPayload(GrabMessage());
+
+            payload.Albums[0].AlbumRelease.WantedTracks.Should().BeNull();
+        }
+
+        [Test]
+        public void import_tracks_should_carry_musicbrainz_ids()
+        {
+            var message = ImportMessage(_main, false);
+            message.TrackFiles = new List<TrackFile>
+            {
+                new TrackFile
+                {
+                    Path = "/new.flac",
+                    Quality = new QualityModel(Quality.FLAC),
+                    Tracks = new List<Track> { new Track { Id = 2, ForeignTrackId = "t2", ForeignRecordingId = "r2", MediumNumber = 1, AbsoluteTrackNumber = 2 } }
+                }
+            };
+
+            var payload = Subject.BuildOnReleaseImportPayload(message);
+
+            payload.Tracks.Should().ContainSingle();
+            payload.Tracks[0].MBId.Should().Be("t2");
+            payload.Tracks[0].RecordingMBId.Should().Be("r2");
+        }
     }
 }

@@ -47,18 +47,5 @@ namespace NzbDrone.Core.Test.MusicTests
             Mocker.GetMock<ITrackRepository>()
                 .Verify(v => v.SetMonitored(It.Is<List<Track>>(l => l.Select(t => t.ForeignRecordingId).OrderBy(x => x).SequenceEqual(new[] { "a", "d" }))), Times.Once());
         }
-
-        [Test]
-        public void set_monitored_should_update_only_changed_tracks()
-        {
-            var tracks = Tracks(1, ("a", true), ("b", false));
-            Mocker.GetMock<ITrackRepository>().Setup(s => s.Get(It.IsAny<IEnumerable<int>>())).Returns(tracks);
-
-            Subject.SetMonitored(tracks.Select(t => t.Id), false);
-
-            tracks.Should().OnlyContain(t => !t.Monitored);
-            Mocker.GetMock<ITrackRepository>()
-                .Verify(v => v.SetMonitored(It.Is<List<Track>>(l => l.Single().ForeignRecordingId == "a")), Times.Once());
-        }
     }
 }

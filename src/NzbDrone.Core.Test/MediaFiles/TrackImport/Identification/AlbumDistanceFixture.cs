@@ -121,6 +121,20 @@ namespace NzbDrone.Core.Test.MediaFiles.TrackImport.Identification
             DistanceCalculator.AlbumReleaseDistance(localTracks, release, mapping).NormalizedDistance().Should().Be(0.0);
         }
 
+        // Tomvis fork (MUSIC-64): tracks the album doesn't want are not missing
+        [Test]
+        public void test_unwanted_tracks_are_not_missing()
+        {
+            var tracks = GivenTracks(3);
+            tracks[1].Monitored = false;
+            tracks[2].Monitored = false;
+            var release = GivenAlbumRelease("album", tracks);
+            var localTracks = GivenLocalTracks(tracks.Take(1).ToList(), release);
+            var mapping = GivenMapping(localTracks, tracks);
+
+            DistanceCalculator.AlbumReleaseDistance(localTracks, release, mapping).NormalizedDistance().Should().Be(0.0);
+        }
+
         [Test]
         public void test_incomplete_album()
         {

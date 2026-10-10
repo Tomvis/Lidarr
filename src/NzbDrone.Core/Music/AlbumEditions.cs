@@ -41,14 +41,15 @@ namespace NzbDrone.Core.Music
             {
                 var monitored = Monitored(album.AlbumReleases.Value);
 
+                // Tomvis fork (MUSIC-64): only the tracks each release wants
                 if (monitored.Count <= 1)
                 {
-                    return monitored.Sum(r => r.TrackCount);
+                    return monitored.Sum(WantedTracks.Count);
                 }
 
                 var imported = monitored.Where(r => importedReleaseIds.Contains(r.Id)).ToList();
 
-                return imported.Any() ? imported.Sum(r => r.TrackCount) : monitored.Max(r => r.TrackCount);
+                return imported.Any() ? imported.Sum(WantedTracks.Count) : monitored.Max(WantedTracks.Count);
             });
         }
 

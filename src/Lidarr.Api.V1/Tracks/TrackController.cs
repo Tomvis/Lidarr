@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Lidarr.Http;
@@ -13,13 +14,17 @@ namespace Lidarr.Api.V1.Tracks
     [V1ApiController]
     public class TrackController : TrackControllerWithSignalR
     {
+        private readonly ITrackMonitoringService _trackMonitoringService;
+
         public TrackController(IArtistService artistService,
                              ITrackService trackService,
+                             ITrackMonitoringService trackMonitoringService,
                              IUpgradableSpecification upgradableSpecification,
                              ICustomFormatCalculationService formatCalculator,
                              IBroadcastSignalRMessage signalRBroadcaster)
             : base(trackService, artistService, upgradableSpecification, formatCalculator, signalRBroadcaster)
         {
+            _trackMonitoringService = trackMonitoringService;
         }
 
         [HttpGet]
@@ -49,6 +54,22 @@ namespace Lidarr.Api.V1.Tracks
             }
 
             return MapToResource(_trackService.GetTracks(trackIds), false, false);
+        }
+
+        // Tomvis fork (MUSIC-64): want or unwant single tracks (see TrackMonitoringService)
+        [HttpPut("monitor")]
+        public IActionResult SetTracksMonitored([FromBody] TracksMonitoredResource resource)
+        {
+            try
+            {
+                _trackMonitoringService.SetMonitored(resource.TrackIds, resource.Monitored);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new BadRequestException(ex.Message);
+            }
+
+            return Accepted(MapToResource(_trackService.GetTracks(resource.TrackIds), false, false));
         }
     }
 }

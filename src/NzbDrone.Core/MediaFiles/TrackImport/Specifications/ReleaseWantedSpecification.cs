@@ -17,9 +17,10 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Specifications
 
         public Decision IsSatisfiedBy(LocalAlbumRelease item, DownloadClientItem downloadClientItem)
         {
-            // Tomvis fork (MUSIC-63): with several editions monitored, AnyReleaseOk can't pull in another release
+            // Tomvis fork (MUSIC-63): with several editions monitored, AnyReleaseOk can't pull in another release.
+            // Tomvis fork (MUSIC-64): wanted tracks live on the monitored release, so another release can't stand in.
             var album = item.AlbumRelease.Album.Value;
-            if (item.AlbumRelease.Monitored || (album.AnyReleaseOk && !AlbumEditions.IsMultiEdition(album)))
+            if (item.AlbumRelease.Monitored || (album.AnyReleaseOk && !AlbumEditions.IsMultiEdition(album) && !WantedTracks.IsPartial(album)))
             {
                 return Decision.Accept();
             }

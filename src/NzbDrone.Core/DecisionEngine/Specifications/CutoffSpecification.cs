@@ -52,7 +52,7 @@ namespace NzbDrone.Core.DecisionEngine.Specifications
 
                 if (edition != null)
                 {
-                    tracksMissing = _trackService.GetTracksByRelease(edition.Id).Any(t => t.TrackFileId == 0);
+                    tracksMissing = _trackService.GetTracksByRelease(edition.Id).Any(t => t.Monitored && t.TrackFileId == 0);
                     trackFiles = _mediaFileService.GetFilesByRelease(edition.Id);
                 }
                 else
@@ -62,6 +62,9 @@ namespace NzbDrone.Core.DecisionEngine.Specifications
                         TimeSpan.FromSeconds(30));
                     trackFiles = _mediaFileService.GetFilesByAlbum(album.Id);
                 }
+
+                // Tomvis fork (MUSIC-64): files of tracks the album doesn't want don't count
+                trackFiles = WantedTracks.WantedFiles(album, trackFiles);
 
                 if (!tracksMissing && trackFiles.Any())
                 {
