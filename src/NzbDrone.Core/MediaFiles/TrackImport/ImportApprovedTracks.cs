@@ -242,12 +242,20 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
                     }
                     else
                     {
-                        // Delete existing files from the DB mapped to this path
+                        // Reuse the DB row already mapped to this path. Deleting it here and inserting the
+                        // replacement after the loop lost every row deleted so far whenever the import was
+                        // interrupted (and the delete event recycled the file's extras).
                         var previousFile = _mediaFileService.GetFileWithPath(trackFile.Path);
 
                         if (previousFile != null)
                         {
-                            _mediaFileService.Delete(previousFile, DeleteMediaFileReason.ManualOverride);
+                            if (filesToAdd.Any(f => f.Id == previousFile.Id))
+                            {
+                                importResults.Add(new ImportResult(importDecision, "Track has already been imported"));
+                                continue;
+                            }
+
+                            trackFile.Id = previousFile.Id;
                         }
 
                         try
@@ -314,10 +322,21 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
 
             var watch = new System.Diagnostics.Stopwatch();
             watch.Start();
-            _mediaFileService.AddMany(filesToAdd);
-            _logger.Debug($"Inserted new trackfiles in {watch.ElapsedMilliseconds}ms");
+            var reusedFiles = filesToAdd.Where(f => f.Id > 0).ToList();
+            _mediaFileService.AddMany(filesToAdd.Where(f => f.Id == 0).ToList());
+            _mediaFileService.Update(reusedFiles);
+            _logger.Debug($"Inserted new and updated {reusedFiles.Count} existing trackfiles in {watch.ElapsedMilliseconds}ms");
             filesToAdd.ForEach(f => f.Tracks.Value.ForEach(t => t.TrackFileId = f.Id));
-            _trackService.SetFileIds(filesToAdd.SelectMany(x => x.Tracks.Value).ToList());
+
+            // tracks that pointed at a reused trackfile but no longer match it get unlinked
+            var mappedTracks = filesToAdd.SelectMany(x => x.Tracks.Value).ToList();
+            var mappedTrackIds = mappedTracks.Select(t => t.Id).ToHashSet();
+            var unlinkedTracks = reusedFiles.Any()
+                ? _trackService.GetTracksByFileId(reusedFiles.Select(f => f.Id)).Where(t => !mappedTrackIds.Contains(t.Id)).ToList()
+                : new List<Track>();
+            unlinkedTracks.ForEach(t => t.TrackFileId = 0);
+
+            _trackService.SetFileIds(mappedTracks.Concat(unlinkedTracks).ToList());
             _logger.Debug($"TrackFileIds updated, total {watch.ElapsedMilliseconds}ms");
 
             // now that trackfiles have been inserted and ids generated, publish the import events

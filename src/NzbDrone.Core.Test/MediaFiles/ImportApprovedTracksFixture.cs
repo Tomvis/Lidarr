@@ -87,6 +87,10 @@ namespace NzbDrone.Core.Test.MediaFiles
             Mocker.GetMock<IMediaFileService>()
                 .Setup(s => s.GetFilesByAlbum(It.IsAny<int>()))
                 .Returns(new List<TrackFile>());
+
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByFileId(It.IsAny<IEnumerable<int>>()))
+                .Returns(new List<Track>());
         }
 
         [Test]
@@ -206,18 +210,74 @@ namespace NzbDrone.Core.Test.MediaFiles
         }
 
         [Test]
-        public void should_delete_existing_trackfiles_with_the_same_path()
+        public void should_reuse_existing_trackfile_with_the_same_path()
         {
+            var previousFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 42).Build();
+
             Mocker.GetMock<IMediaFileService>()
                 .Setup(s => s.GetFileWithPath(It.IsAny<string>()))
-                .Returns(Builder<TrackFile>.CreateNew().Build());
+                .Returns(previousFile);
 
             var track = _approvedDecisions.First();
             track.Item.ExistingFile = true;
             Subject.Import(new List<ImportDecision<LocalTrack>> { track }, false);
 
+            // deleting the old row mid-loop and inserting the new one after the loop loses
+            // every row deleted so far when the import is interrupted
             Mocker.GetMock<IMediaFileService>()
-                .Verify(v => v.Delete(It.IsAny<TrackFile>(), DeleteMediaFileReason.ManualOverride), Times.Once());
+                .Verify(v => v.Delete(It.IsAny<TrackFile>(), It.IsAny<DeleteMediaFileReason>()), Times.Never());
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Update(It.Is<List<TrackFile>>(l => l.Count == 1 && l[0].Id == 42 && l[0].Path == track.Item.Path)), Times.Once());
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.AddMany(It.Is<List<TrackFile>>(l => l.Count == 0)), Times.Once());
+        }
+
+        [Test]
+        public void should_link_tracks_to_reused_trackfile_and_unlink_tracks_it_no_longer_matches()
+        {
+            var previousFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 42).Build();
+            var staleTrack = Builder<Track>.CreateNew().With(t => t.Id = 999).With(t => t.TrackFileId = 42).Build();
+
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFileWithPath(It.IsAny<string>()))
+                .Returns(previousFile);
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByFileId(It.IsAny<IEnumerable<int>>()))
+                .Returns(new List<Track> { staleTrack });
+
+            var track = _approvedDecisions.First();
+            track.Item.ExistingFile = true;
+            var mappedTrack = track.Item.Tracks.Single();
+
+            Subject.Import(new List<ImportDecision<LocalTrack>> { track }, false);
+
+            Mocker.GetMock<ITrackService>()
+                .Verify(v => v.SetFileIds(It.Is<List<Track>>(l => l.Count == 2 &&
+                                                                    l.Any(t => t.Id == mappedTrack.Id && t.TrackFileId == 42) &&
+                                                                    l.Any(t => t.Id == 999 && t.TrackFileId == 0))),
+                        Times.Once());
+        }
+
+        [Test]
+        public void should_import_duplicate_path_only_once_when_reusing_trackfile()
+        {
+            var previousFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 42).Build();
+
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFileWithPath(It.IsAny<string>()))
+                .Returns(previousFile);
+
+            var first = _approvedDecisions[0];
+            var second = _approvedDecisions[1];
+            first.Item.ExistingFile = true;
+            second.Item.ExistingFile = true;
+            second.Item.Path = first.Item.Path;
+
+            var results = Subject.Import(new List<ImportDecision<LocalTrack>> { first, second }, false);
+
+            results.Where(r => r.Result == ImportResultType.Imported).Should().HaveCount(1);
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Update(It.Is<List<TrackFile>>(l => l.Count == 1)), Times.Once());
         }
 
         [Test]

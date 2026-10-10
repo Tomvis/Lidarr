@@ -24,6 +24,7 @@ namespace NzbDrone.Core.MediaFiles
         private readonly IAlbumService _albumService;
         private readonly IConfigService _configService;
         private readonly ITrackService _trackService;
+        private readonly IMediaFileService _mediaFileService;
         private readonly Logger _logger;
         private static readonly DateTime EpochTime = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -31,12 +32,14 @@ namespace NzbDrone.Core.MediaFiles
                                         IConfigService configService,
                                         ITrackService trackService,
                                         IAlbumService albumService,
+                                        IMediaFileService mediaFileService,
                                         Logger logger)
         {
             _diskProvider = diskProvider;
             _configService = configService;
             _trackService = trackService;
             _albumService = albumService;
+            _mediaFileService = mediaFileService;
             _logger = logger;
         }
 
@@ -77,6 +80,9 @@ namespace NzbDrone.Core.MediaFiles
                             try
                             {
                                 _diskProvider.FileSetLastWriteTime(trackFilePath, relDate);
+
+                                // keep Modified in step with the disk, else the next scan sees the file as changed
+                                trackFile.Modified = _diskProvider.FileGetLastWrite(trackFilePath);
                                 _logger.Debug("Date of file [{0}] changed from '{1}' to '{2}'", trackFilePath, oldDateTime, relDate);
 
                                 return true;
@@ -121,6 +127,7 @@ namespace NzbDrone.Core.MediaFiles
 
             if (updated.Any())
             {
+                _mediaFileService.Update(updated);
                 _logger.ProgressDebug("Changed file date for {0} files of {1} in {2}", updated.Count, trackFiles.Count, message.Artist.Name);
             }
             else
