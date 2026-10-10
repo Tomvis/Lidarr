@@ -1,0 +1,8 @@
+# Build outputs from forksync's checks run in the same workdir: their restore state points at a
+# NuGet cache the build stage doesn't have (NETSDK1064).
+.git
+_temp
+_output
+_tests
+_artifacts
+node_modules
