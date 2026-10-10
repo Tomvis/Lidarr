@@ -99,6 +99,7 @@ namespace NzbDrone.Core.Music
                          .Join<Track, AlbumRelease>((t, r) => t.AlbumReleaseId == r.Id)
                          .LeftJoin<Track, TrackFile>((t, f) => t.TrackFileId == f.Id)
                          .Where<AlbumRelease>(r => r.Monitored == true && r.AlbumId == albumId)
+                         .Where<Track>(t => t.Monitored == true)
                          .Where<TrackFile>(x => x.Id == null));
 #pragma warning restore CS0472
         }

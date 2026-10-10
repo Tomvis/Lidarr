@@ -90,6 +90,35 @@ namespace NzbDrone.Core.Test.ArtistStatsTests
             stats.First().TrackCount.Should().Be(0);
         }
 
+        // Tomvis fork (MUSIC-64): in a monitored album an unwanted track is not counted as wanted
+        [Test]
+        public void should_not_include_unwanted_track_of_monitored_album_in_track_count()
+        {
+            _album.Monitored = true;
+            Db.Update(_album);
+            _track.Monitored = false;
+            GivenTrack();
+
+            var stats = Subject.ArtistStatistics();
+
+            stats.Should().HaveCount(1);
+            stats.First().TrackCount.Should().Be(0);
+        }
+
+        [Test]
+        public void should_include_wanted_track_of_monitored_album_in_track_count()
+        {
+            _album.Monitored = true;
+            Db.Update(_album);
+            _track.Monitored = true;
+            GivenTrack();
+
+            var stats = Subject.ArtistStatistics();
+
+            stats.Should().HaveCount(1);
+            stats.First().TrackCount.Should().Be(1);
+        }
+
         [Test]
         public void should_include_unmonitored_track_with_file_in_track_count()
         {

@@ -13,6 +13,7 @@ namespace NzbDrone.Core.Music
             OldForeignTrackIds = new List<string>();
             OldForeignRecordingIds = new List<string>();
             Ratings = new Ratings();
+            Monitored = true;
         }
 
         // These are model fields
@@ -30,6 +31,9 @@ namespace NzbDrone.Core.Music
         public Ratings Ratings { get; set; }
         public int MediumNumber { get; set; }
         public int TrackFileId { get; set; }
+
+        // Tomvis fork (MUSIC-64): false = this track is not wanted (the album wants only its monitored tracks)
+        public bool Monitored { get; set; }
 
         [MemberwiseEqualityIgnore]
         public bool HasFile => TrackFileId > 0;
@@ -81,6 +85,7 @@ namespace NzbDrone.Core.Music
             AlbumReleaseId = other.AlbumReleaseId;
             ArtistMetadataId = other.ArtistMetadataId;
             TrackFileId = other.TrackFileId;
+            Monitored = other.Monitored;
         }
     }
 }
