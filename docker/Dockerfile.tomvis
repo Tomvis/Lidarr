@@ -1,0 +1,19 @@
+# Tomvis/Lidarr image: hotio's nightly of the same version with this fork's backend overlaid.
+# Build from `git archive enhanced` on .120 (MUSIC-62). Keep LIDARRVERSION equal to the merged
+# upstream tag: plugins (Tidal, Tubifarry) bind to that assembly version.
+ARG LIDARRVERSION=3.1.6.5078
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0.421 AS build
+ARG LIDARRVERSION
+WORKDIR /src
+COPY . .
+RUN LIDARRVERSION=$LIDARRVERSION BUILD_SOURCEBRANCHNAME=nightly NuGetAudit=false \
+        ./build.sh --backend -r linux-musl-x64 -f net8.0 \
+    && cd _output/net8.0/linux-musl-x64/publish \
+    && rm -f Lidarr.Windows.* ServiceInstall.* ServiceUninstall.*
+
+FROM ghcr.io/hotio/lidarr:nightly-${LIDARRVERSION}
+ARG FORK_SHA=unknown
+COPY --from=build /src/_output/net8.0/linux-musl-x64/publish/ /app/bin/
+RUN apk add --no-cache ffmpeg \
+    && sed -i "s/^PackageVersion=.*/PackageVersion=tomvis-${FORK_SHA}/" /app/package_info
