@@ -18,6 +18,9 @@ namespace NzbDrone.Core.Notifications.Webhook
         public List<string> Genres { get; set; }
         public List<WebhookImage> Images { get; set; }
 
+        // Tomvis fork (MUSIC-62): grab = monitored release, import/upgrade = imported release
+        public WebhookAlbumRelease AlbumRelease { get; set; }
+
         public WebhookAlbum()
         {
         }

@@ -37,7 +37,7 @@ namespace NzbDrone.Core.Notifications.Webhook
                 InstanceName = _configFileProvider.InstanceName,
                 ApplicationUrl = _configService.ApplicationUrl,
                 Artist = GetArtist(message.Artist),
-                Albums = remoteAlbum.Albums.Select(GetAlbum).ToList(),
+                Albums = remoteAlbum.Albums.Select(a => GetAlbum(a, a.AlbumReleases?.Value?.FirstOrDefault(r => r.Monitored))).ToList(),
                 Release = new WebhookRelease(quality, remoteAlbum),
                 DownloadClient = message.DownloadClientName,
                 DownloadClientType = message.DownloadClientType,
@@ -55,7 +55,7 @@ namespace NzbDrone.Core.Notifications.Webhook
                 InstanceName = _configFileProvider.InstanceName,
                 ApplicationUrl = _configService.ApplicationUrl,
                 Artist = GetArtist(message.Artist),
-                Album = GetAlbum(message.Album),
+                Album = GetAlbum(message.Album, message.Release),
                 Tracks = trackFiles.SelectMany(x => x.Tracks.Value.Select(y => new WebhookTrack(y))).ToList(),
                 TrackFiles = trackFiles.ConvertAll(x => new WebhookTrackFile(x)),
                 IsUpgrade = message.OldFiles.Any(),
@@ -253,6 +253,11 @@ namespace NzbDrone.Core.Notifications.Webhook
 
         private WebhookAlbum GetAlbum(Album album)
         {
+            return GetAlbum(album, null);
+        }
+
+        private WebhookAlbum GetAlbum(Album album, AlbumRelease release)
+        {
             if (album == null)
             {
                 return null;
@@ -260,7 +265,10 @@ namespace NzbDrone.Core.Notifications.Webhook
 
             _mediaCoverService.ConvertToLocalUrls(album.Id, MediaCoverEntity.Album, album.Images);
 
-            return new WebhookAlbum(album);
+            return new WebhookAlbum(album)
+            {
+                AlbumRelease = release == null ? null : new WebhookAlbumRelease(release)
+            };
         }
 
         private List<string> GetTagLabels(Artist artist)
