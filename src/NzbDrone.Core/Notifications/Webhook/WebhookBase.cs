@@ -5,6 +5,7 @@ using NzbDrone.Core.Configuration;
 using NzbDrone.Core.MediaCover;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Music;
+using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Tags;
 using NzbDrone.Core.ThingiProvider;
 
@@ -37,12 +38,27 @@ namespace NzbDrone.Core.Notifications.Webhook
                 InstanceName = _configFileProvider.InstanceName,
                 ApplicationUrl = _configService.ApplicationUrl,
                 Artist = GetArtist(message.Artist),
-                Albums = remoteAlbum.Albums.Select(a => GetAlbum(a, a.AlbumReleases?.Value?.FirstOrDefault(r => r.Monitored))).ToList(),
+                Albums = remoteAlbum.Albums.Select(a => GetAlbum(a, GrabbedRelease(a, remoteAlbum))).ToList(),
                 Release = new WebhookRelease(quality, remoteAlbum),
                 DownloadClient = message.DownloadClientName,
                 DownloadClientType = message.DownloadClientType,
                 DownloadId = message.DownloadId
             };
+        }
+
+        // Tomvis fork (MUSIC-63): with several editions monitored, the edition the grab is for
+        private static AlbumRelease GrabbedRelease(Album album, RemoteAlbum remoteAlbum)
+        {
+            var releases = album.AlbumReleases?.Value;
+
+            if (releases == null)
+            {
+                return null;
+            }
+
+            return AlbumEditions.IsMultiEdition(album)
+                ? AlbumEditions.TargetEdition(album, remoteAlbum.Release?.Title)
+                : releases.FirstOrDefault(r => r.Monitored);
         }
 
         public WebhookImportPayload BuildOnReleaseImportPayload(AlbumDownloadMessage message)

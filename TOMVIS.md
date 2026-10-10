@@ -11,3 +11,11 @@ Branch `enhanced` = upstream `develop` tag + fork commits. forksync (.120) rebas
 ## Webhook additions
 
 - `album.albumRelease` on Grab (the monitored release, i.e. Lidarr's import target) and on Download/upgrade (the release the files were imported as): `id`, `mbId`, `title`, `disambiguation`, `country`, `format` (`2xCD`), `trackCount`, `status`, `releaseDate`. Omitted when unknown.
+
+## Editions (MUSIC-63)
+
+- An album may monitor several releases ("editions") at once: `PUT /api/v1/album` with `monitored: true` on each wanted release. One monitored release = upstream behaviour everywhere. Helpers: `NzbDrone.Core/Music/AlbumEditions.cs`.
+- Primary edition = monitored release titled like the album, no disambiguation, lowest id; it keeps the album folder. An extra edition's `{Album Title}` tokens become its edition title (`Ihsahn (orchestral version)`, else album title + disambiguation, else format + country), so the naming format must use an album-title token or editions share a folder.
+- Refresh keeps every monitored edition and never monitors new MB releases. An import replaces/upgrades only the edition identification picked (not pinned to the grab: a mislabeled grab must not import one edition as another). Removing an edition unlinks only its tracks.
+- Search: a result is matched to an edition by the words that set it apart from the album (`orchestral`, `instrumentals`); no such words = primary. Cutoff/upgrade checks use that edition's files; a result naming an unmonitored edition is rejected (`EditionSpecification`). The Grab webhook's `albumRelease` is the matched edition.
+- Not done: UI multi-select (the image ships hotio's frontend, so use the API), plugin indexers passing an exact release id.

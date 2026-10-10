@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NLog;
 using NzbDrone.Common.Cache;
@@ -42,10 +43,23 @@ namespace NzbDrone.Core.DecisionEngine.Specifications
         {
             foreach (var album in subject.Albums)
             {
-                var tracksMissing = _missingFilesCache.Get(album.Id.ToString(),
-                                                           () => _trackService.TracksWithoutFiles(album.Id).Any(),
-                                                           TimeSpan.FromSeconds(30));
-                var trackFiles = _mediaFileService.GetFilesByAlbum(album.Id);
+                // Tomvis fork (MUSIC-63): with several editions monitored, judge the edition this result is for
+                bool tracksMissing;
+                List<TrackFile> trackFiles;
+                var edition = AlbumEditions.IsMultiEdition(album) ? AlbumEditions.TargetEdition(album, subject.Release?.Title) : null;
+
+                if (edition != null)
+                {
+                    tracksMissing = _trackService.GetTracksByRelease(edition.Id).Any(t => t.TrackFileId == 0);
+                    trackFiles = _mediaFileService.GetFilesByRelease(edition.Id);
+                }
+                else
+                {
+                    tracksMissing = _missingFilesCache.Get(album.Id.ToString(),
+                                                               () => _trackService.TracksWithoutFiles(album.Id).Any(),
+                                                               TimeSpan.FromSeconds(30));
+                    trackFiles = _mediaFileService.GetFilesByAlbum(album.Id);
+                }
 
                 if (!tracksMissing && trackFiles.Any())
                 {

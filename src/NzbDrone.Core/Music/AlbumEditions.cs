@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NzbDrone.Common.Extensions;
 
 namespace NzbDrone.Core.Music
@@ -9,6 +10,8 @@ namespace NzbDrone.Core.Music
     // With one monitored release everything behaves as upstream.
     public static class AlbumEditions
     {
+        private static readonly HashSet<string> NeutralWords = new HashSet<string> { "version", "edition", "the", "a", "an", "of", "and" };
+
         public static List<AlbumRelease> Monitored(IEnumerable<AlbumRelease> releases)
         {
             return releases?.Where(r => r.Monitored).ToList() ?? new List<AlbumRelease>();
@@ -96,6 +99,49 @@ namespace NzbDrone.Core.Music
             }
 
             return $"{album.Title} ({label})";
+        }
+
+        // The edition a search result (or grab) is for, by the words that set an edition apart from the album
+        // ("orchestral", "instrumentals"): a release whose words all appear in the title (most words wins,
+        // monitored first), else the primary edition. Null when the title names an unmonitored edition.
+        public static AlbumRelease TargetEdition(Album album, string title)
+        {
+            var monitored = Monitored(album.AlbumReleases.Value);
+            var primary = Primary(album, monitored);
+            var titleWords = Words(title);
+
+            var named = album.AlbumReleases.Value
+                .Where(r => primary == null || r.Id != primary.Id)
+                .Select(r => new { Release = r, Words = EditionWords(album, r) })
+                .Where(x => x.Words.Any() && x.Words.All(titleWords.Contains))
+                .OrderByDescending(x => x.Words.Count)
+                .ThenByDescending(x => x.Release.Monitored)
+                .Select(x => x.Release)
+                .FirstOrDefault();
+
+            if (named == null)
+            {
+                return primary;
+            }
+
+            return named.Monitored ? named : null;
+        }
+
+        private static List<string> EditionWords(Album album, AlbumRelease release)
+        {
+            var albumWords = Words(album.Title);
+
+            return Words($"{release.Title} {release.Disambiguation}")
+                .Where(w => !albumWords.Contains(w) && !NeutralWords.Contains(w))
+                .ToList();
+        }
+
+        private static HashSet<string> Words(string text)
+        {
+            return Regex.Split((text ?? string.Empty).ToLowerInvariant(), @"[^\p{L}\p{N}]+")
+                .Where(w => w.Length > 0)
+                .Select(w => w.Length > 3 && w.EndsWith("s") ? w.Substring(0, w.Length - 1) : w)
+                .ToHashSet();
         }
 
         // MusicBrainz style: "2xCD", "CD + DVD"
