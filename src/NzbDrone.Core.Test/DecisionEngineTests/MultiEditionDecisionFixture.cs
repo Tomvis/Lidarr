@@ -1,15 +1,21 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FizzWare.NBuilder;
 using FluentAssertions;
 using Moq;
 using NUnit.Framework;
 using NzbDrone.Core.CustomFormats;
+using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.DecisionEngine.Specifications;
+using NzbDrone.Core.Download;
+using NzbDrone.Core.Download.TrackedDownloads;
+using NzbDrone.Core.IndexerSearch.Definitions;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Music;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Profiles.Qualities;
 using NzbDrone.Core.Qualities;
+using NzbDrone.Core.Queue;
 using NzbDrone.Core.Test.CustomFormats;
 using NzbDrone.Core.Test.Framework;
 using NzbDrone.Test.Common.AutoMoq;
@@ -183,6 +189,134 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
         {
             Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Ihsahn(), "Ihsahn - Ihsahn (Orchestral Version) (2024) [FLAC]"), null)
                 .Accepted.Should().BeTrue();
+        }
+    }
+
+    [TestFixture]
+    public class SingleAlbumSearchMatchMultiEditionFixture : CoreTest<NzbDrone.Core.DecisionEngine.Specifications.Search.SingleAlbumSearchMatchSpecification>
+    {
+        private Decision Check(Album album, string parsedAlbumTitle)
+        {
+            var result = EditionTestData.Result(album, $"Ihsahn - {parsedAlbumTitle} (2024) [FLAC]");
+            result.ParsedAlbumInfo.AlbumTitle = parsedAlbumTitle;
+
+            var criteria = new AlbumSearchCriteria { AlbumTitle = album.Title, Albums = new List<Album> { album } };
+
+            return Subject.IsSatisfiedBy(result, criteria);
+        }
+
+        [Test]
+        public void should_accept_a_result_titled_as_a_monitored_edition()
+        {
+            Check(EditionTestData.Ihsahn(), "Ihsahn (Orchestral Version)").Accepted.Should().BeTrue();
+        }
+
+        [Test]
+        public void should_reject_a_result_titled_as_an_unmonitored_edition()
+        {
+            Check(EditionTestData.Ihsahn(), "Ihsahn (Orchestral)").Accepted.Should().BeFalse();
+        }
+
+        [Test]
+        public void should_reject_an_edition_title_when_one_release_is_monitored()
+        {
+            Check(EditionTestData.Ihsahn(false), "Ihsahn (Orchestral Version)").Accepted.Should().BeFalse();
+        }
+    }
+
+    [TestFixture]
+    public class QueueMultiEditionFixture : CoreTest<QueueSpecification>
+    {
+        [SetUp]
+        public void Setup()
+        {
+            Mocker.Resolve<UpgradableSpecification>();
+            CustomFormatsTestHelpers.GivenCustomFormats();
+
+            Mocker.GetMock<ICustomFormatCalculationService>()
+                .Setup(x => x.ParseCustomFormat(It.IsAny<RemoteAlbum>(), It.IsAny<long>()))
+                .Returns(new List<CustomFormat>());
+        }
+
+        private void GivenQueued(RemoteAlbum queued)
+        {
+            Mocker.GetMock<IQueueService>()
+                .Setup(s => s.GetQueue())
+                .Returns(new List<Queue.Queue> { new Queue.Queue { RemoteAlbum = queued, TrackedDownloadState = TrackedDownloadState.Downloading } });
+        }
+
+        [Test]
+        public void should_not_block_an_edition_on_another_edition_in_the_queue()
+        {
+            var album = EditionTestData.Ihsahn();
+            var orchestral = EditionTestData.Result(album, "Ihsahn - Ihsahn (Orchestral Version) [FLAC]");
+            var main = EditionTestData.Result(album, "Ihsahn - Ihsahn [FLAC]");
+            main.Artist = orchestral.Artist;
+            GivenQueued(orchestral);
+
+            Subject.IsSatisfiedBy(main, null).Accepted.Should().BeTrue();
+        }
+
+        [Test]
+        public void should_block_the_same_edition_already_in_the_queue()
+        {
+            var album = EditionTestData.Ihsahn();
+            var queued = EditionTestData.Result(album, "Ihsahn - Ihsahn (Orchestral Version) [FLAC]");
+            var again = EditionTestData.Result(album, "Ihsahn-Ihsahn_Orchestral_Version-WEB-FLAC");
+            again.Artist = queued.Artist;
+            GivenQueued(queued);
+
+            Subject.IsSatisfiedBy(again, null).Accepted.Should().BeFalse();
+        }
+    }
+
+    [TestFixture]
+    public class ProcessDecisionsMultiEditionFixture : CoreTest<ProcessDownloadDecisions>
+    {
+        [SetUp]
+        public void Setup()
+        {
+            Mocker.GetMock<IPrioritizeDownloadDecision>()
+                .Setup(v => v.PrioritizeDecisions(It.IsAny<List<DownloadDecision>>()))
+                .Returns<List<DownloadDecision>>(v => v);
+        }
+
+        private DownloadDecision Decision(Album album, string title)
+        {
+            var result = EditionTestData.Result(album, title);
+            result.Release.DownloadProtocol = "TorrentDownloadProtocol";
+            result.Release.PublishDate = System.DateTime.UtcNow;
+
+            return new DownloadDecision(result);
+        }
+
+        [Test]
+        public async Task should_grab_one_release_per_edition()
+        {
+            var album = EditionTestData.Ihsahn();
+
+            await Subject.ProcessDecisions(new List<DownloadDecision>
+            {
+                Decision(album, "Ihsahn - Ihsahn [FLAC]"),
+                Decision(album, "Ihsahn - Ihsahn (Orchestral Version) [FLAC]"),
+                Decision(album, "Ihsahn-Ihsahn_Orchestral_Version-WEB-FLAC")
+            });
+
+            Mocker.GetMock<IDownloadService>().Verify(v => v.DownloadReport(It.IsAny<RemoteAlbum>(), null), Times.Exactly(2));
+        }
+
+        [Test]
+        public async Task should_grab_one_release_per_album_when_one_release_is_monitored()
+        {
+            var album = EditionTestData.Ihsahn(false);
+
+            await Subject.ProcessDecisions(new List<DownloadDecision>
+            {
+                Decision(album, "Ihsahn - Ihsahn [FLAC]"),
+                Decision(album, "Ihsahn - Ihsahn (Orchestral Version) [FLAC]")
+            });
+
+            Mocker.GetMock<IDownloadService>().Verify(v => v.DownloadReport(It.IsAny<RemoteAlbum>(), null), Times.Once());
         }
     }
 }

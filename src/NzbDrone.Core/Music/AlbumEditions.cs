@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using NzbDrone.Common.Extensions;
+using NzbDrone.Core.Parser.Model;
 
 namespace NzbDrone.Core.Music
 {
@@ -125,6 +126,16 @@ namespace NzbDrone.Core.Music
             }
 
             return named.Monitored ? named : null;
+        }
+
+        // What a grab occupies: an album, or one edition of an album with several monitored
+        public static List<string> GrabKeys(RemoteAlbum remoteAlbum, string title = null)
+        {
+            title ??= remoteAlbum.Release?.Title;
+
+            return remoteAlbum.Albums
+                .Select(a => IsMultiEdition(a) ? $"{a.Id}:{TargetEdition(a, title)?.Id}" : $"{a.Id}")
+                .ToList();
         }
 
         private static List<string> EditionWords(Album album, AlbumRelease release)

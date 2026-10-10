@@ -8,6 +8,7 @@ using NzbDrone.Core.Download.Clients;
 using NzbDrone.Core.Download.Pending;
 using NzbDrone.Core.Exceptions;
 using NzbDrone.Core.Indexers;
+using NzbDrone.Core.Music;
 
 namespace NzbDrone.Core.Download
 {
@@ -166,10 +167,10 @@ namespace NzbDrone.Core.Download
 
         private bool IsAlbumProcessed(List<DownloadDecision> decisions, DownloadDecision report)
         {
-            var albumIds = report.RemoteAlbum.Albums.Select(e => e.Id).ToList();
+            // Tomvis fork (MUSIC-63): each monitored edition of an album is grabbed on its own
+            var albumIds = AlbumEditions.GrabKeys(report.RemoteAlbum);
 
-            return decisions.SelectMany(r => r.RemoteAlbum.Albums)
-                            .Select(e => e.Id)
+            return decisions.SelectMany(r => AlbumEditions.GrabKeys(r.RemoteAlbum))
                             .ToList()
                             .Intersect(albumIds)
                             .Any();

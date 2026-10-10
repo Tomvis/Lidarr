@@ -5,6 +5,7 @@ using NzbDrone.Core.Configuration;
 using NzbDrone.Core.CustomFormats;
 using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.IndexerSearch.Definitions;
+using NzbDrone.Core.Music;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Qualities;
 using NzbDrone.Core.Queue;
@@ -38,9 +39,12 @@ namespace NzbDrone.Core.DecisionEngine.Specifications
         public Decision IsSatisfiedBy(RemoteAlbum subject, SearchCriteriaBase searchCriteria)
         {
             var queue = _queueService.GetQueue();
+
+            // Tomvis fork (MUSIC-63): a queued edition doesn't stand in for another edition of the album
+            var subjectKeys = AlbumEditions.GrabKeys(subject);
             var matchingAlbum = queue.Where(q => q.RemoteAlbum?.Artist != null &&
                                                  q.RemoteAlbum.Artist.Id == subject.Artist.Id &&
-                                                 q.RemoteAlbum.Albums.Select(e => e.Id).Intersect(subject.Albums.Select(e => e.Id)).Any())
+                                                 AlbumEditions.GrabKeys(q.RemoteAlbum, q.RemoteAlbum.Release?.Title ?? q.Title).Intersect(subjectKeys).Any())
                            .ToList();
 
             foreach (var queueItem in matchingAlbum)
