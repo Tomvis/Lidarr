@@ -2,6 +2,7 @@ using System.Linq;
 using NLog;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Download;
+using NzbDrone.Core.Music;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Qualities;
 
@@ -18,8 +19,8 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Specifications
 
         public Decision IsSatisfiedBy(LocalAlbumRelease item, DownloadClientItem downloadClientItem)
         {
-            // check if we are changing release
-            var currentRelease = item.AlbumRelease.Album.Value.AlbumReleases.Value.Single(x => x.Monitored);
+            // check if we are changing release (Tomvis fork, MUSIC-63: a monitored edition is never a change)
+            var currentRelease = AlbumEditions.Current(item.AlbumRelease.Album.Value, item.AlbumRelease);
             var newRelease = item.AlbumRelease;
 
             // if we are, check we are upgrading

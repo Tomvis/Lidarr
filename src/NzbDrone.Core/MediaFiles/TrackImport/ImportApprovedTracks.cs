@@ -117,13 +117,28 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
                     continue;
                 }
 
+                var newRelease = albumDecision.First().Item.Release;
+
+                // Tomvis fork (MUSIC-63): with several editions monitored, an import replaces only its own edition
+                // and leaves the others monitored
+                if (AlbumEditions.IsMultiEdition(album))
+                {
+                    if (replaceExisting)
+                    {
+                        RemoveExistingTrackFiles(artist, album, _mediaFileService.GetFilesByRelease(newRelease.Id));
+                    }
+
+                    _logger.Debug("Importing edition {0} [{1} tracks] of {2}", newRelease, newRelease.TrackCount, album);
+                    _eventAggregator.PublishEvent(new AlbumEditedEvent(album, album));
+                    continue;
+                }
+
                 if (replaceExisting)
                 {
-                    RemoveExistingTrackFiles(artist, album);
+                    RemoveExistingTrackFiles(artist, album, _mediaFileService.GetFilesByAlbum(album.Id));
                 }
 
                 // set the correct release to be monitored before importing the new files
-                var newRelease = albumDecision.First().Item.Release;
                 _logger.Debug("Updating release to {0} [{1} tracks]", newRelease, newRelease.TrackCount);
                 album.AlbumReleases = _releaseService.SetMonitored(newRelease);
 
@@ -493,10 +508,9 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
             }
         }
 
-        private void RemoveExistingTrackFiles(Artist artist, Album album)
+        private void RemoveExistingTrackFiles(Artist artist, Album album, List<TrackFile> previousFiles)
         {
             var rootFolder = _diskProvider.GetParentFolder(artist.Path);
-            var previousFiles = _mediaFileService.GetFilesByAlbum(album.Id);
 
             _logger.Debug($"Deleting {previousFiles.Count} existing files for {album}");
 

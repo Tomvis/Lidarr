@@ -5,6 +5,7 @@ using FizzWare.NBuilder;
 using FluentAssertions;
 using Moq;
 using NUnit.Framework;
+using NzbDrone.Common.Disk;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Download;
@@ -291,6 +292,81 @@ namespace NzbDrone.Core.Test.MediaFiles
             Mocker.GetMock<IUpgradeMediaFiles>()
                 .Verify(v => v.UpgradeTrackFile(It.Is<TrackFile>(e => e.SceneName == firstDecision.Item.SceneName), _approvedDecisions.First().Item, false),
                     Times.Once());
+        }
+
+        private AlbumRelease GivenSecondMonitoredEdition()
+        {
+            var item = _approvedDecisions.First().Item;
+            item.Release.Id = 1;
+
+            var extra = Builder<AlbumRelease>.CreateNew()
+                .With(e => e.Id = 2)
+                .With(e => e.AlbumId = item.Album.Id)
+                .With(e => e.Monitored = true)
+                .Build();
+
+            item.Album.AlbumReleases = new List<AlbumRelease> { item.Release, extra };
+
+            return extra;
+        }
+
+        private void GivenExistingFiles(TrackFile editionFile, TrackFile otherEditionFile)
+        {
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFilesByAlbum(It.IsAny<int>()))
+                .Returns(new List<TrackFile> { editionFile, otherEditionFile });
+
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFilesByRelease(1))
+                .Returns(new List<TrackFile> { editionFile });
+
+            var artistPath = _approvedDecisions.First().Item.Artist.Path;
+            Mocker.GetMock<IDiskProvider>()
+                .Setup(s => s.GetParentFolder(It.IsAny<string>()))
+                .Returns<string>(p => p == artistPath ? @"C:\Test\Music".AsOsAgnostic() : Path.Combine(artistPath, "Album"));
+        }
+
+        [Test]
+        public void should_replace_every_file_of_the_album_when_one_release_is_monitored()
+        {
+            var editionFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            var otherFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 11).Build();
+            _approvedDecisions.First().Item.Release.Id = 1;
+            GivenExistingFiles(editionFile, otherFile);
+
+            Subject.Import(_approvedDecisions, true);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.Is<TrackFile>(f => f.Id == 10 || f.Id == 11), DeleteMediaFileReason.Upgrade), Times.Exactly(2));
+        }
+
+        [Test]
+        public void should_only_replace_files_of_the_imported_edition_when_several_are_monitored()
+        {
+            var editionFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            var otherFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 11).Build();
+            GivenSecondMonitoredEdition();
+            GivenExistingFiles(editionFile, otherFile);
+
+            Subject.Import(_approvedDecisions, true);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.Is<TrackFile>(f => f.Id == 10), DeleteMediaFileReason.Upgrade), Times.Once());
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.Is<TrackFile>(f => f.Id == 11), It.IsAny<DeleteMediaFileReason>()), Times.Never());
+        }
+
+        [Test]
+        public void should_keep_other_editions_monitored_when_importing_one()
+        {
+            var extra = GivenSecondMonitoredEdition();
+
+            Subject.Import(_approvedDecisions, false);
+
+            Mocker.GetMock<IReleaseService>()
+                .Verify(v => v.SetMonitored(It.IsAny<AlbumRelease>()), Times.Never());
+            _approvedDecisions.First().Item.Album.AlbumReleases.Value.Should().OnlyContain(r => r.Monitored);
+            extra.Monitored.Should().BeTrue();
         }
     }
 }

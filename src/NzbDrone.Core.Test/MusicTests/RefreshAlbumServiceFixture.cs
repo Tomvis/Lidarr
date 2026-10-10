@@ -253,11 +253,14 @@ namespace NzbDrone.Core.Test.MusicTests
             newAlbum.AlbumReleases = releases;
             albumCopy.AlbumReleases = releases;
 
+            // Tomvis fork (MUSIC-63): two releases monitored in the DB are two editions and stay monitored
+            // (refreshing_album_should_keep_every_monitored_edition), so only one existing release is monitored here
             var existingReleases = Builder<AlbumRelease>.CreateListOfSize(2)
                 .All()
-                .With(x => x.Monitored = existingMonitored)
+                .With(x => x.Monitored = false)
                 .TheFirst(1)
                 .With(x => x.ForeignReleaseId = "ExistingId1")
+                .With(x => x.Monitored = existingMonitored)
                 .TheNext(1)
                 .With(x => x.ForeignReleaseId = "ExistingId2")
                 .Build() as List<AlbumRelease>;
@@ -390,6 +393,97 @@ namespace NzbDrone.Core.Test.MusicTests
                                                      l => l.Count == 11 &&
                                                      l.Count(y => y.Monitored) == 1 &&
                                                      l.Single(y => y.Monitored).ForeignReleaseId != "ExistingId2"),
+                                                 It.IsAny<List<AlbumRelease>>(),
+                                                 It.IsAny<bool>(),
+                                                 It.IsAny<bool>()));
+        }
+
+        private void GivenTwoMonitoredEditionsAndRemote(List<AlbumRelease> remote)
+        {
+            var newAlbum = Builder<Album>.CreateNew()
+                .With(x => x.ArtistMetadata = Builder<ArtistMetadata>.CreateNew().Build())
+                .Build();
+
+            var albumCopy = Builder<Album>.CreateNew()
+                .With(x => x.ArtistMetadata = Builder<ArtistMetadata>.CreateNew().Build())
+                .With(x => x.AlbumReleases = remote)
+                .Build();
+
+            newAlbum.AlbumReleases = remote;
+
+            var existingReleases = Builder<AlbumRelease>.CreateListOfSize(3)
+                .All()
+                .With(x => x.Monitored = true)
+                .TheFirst(1)
+                .With(x => x.ForeignReleaseId = "ExistingId1")
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "ExistingId2")
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "ExistingId3")
+                .With(x => x.Monitored = false)
+                .Build() as List<AlbumRelease>;
+
+            Mocker.GetMock<IReleaseService>()
+                .Setup(x => x.GetReleasesForRefresh(It.IsAny<int>(), It.IsAny<List<string>>()))
+                .Returns(existingReleases);
+
+            Mocker.GetMock<IProvideAlbumInfo>()
+                .Setup(x => x.GetAlbumInfo(It.IsAny<string>()))
+                .Returns(Tuple.Create("dummy string", albumCopy, new List<ArtistMetadata>()));
+
+            Subject.RefreshAlbumInfo(newAlbum, null, false);
+        }
+
+        [Test]
+        public void refreshing_album_should_keep_every_monitored_edition()
+        {
+            var remote = Builder<AlbumRelease>.CreateListOfSize(3)
+                .All()
+                .With(x => x.Monitored = false)
+                .TheFirst(1)
+                .With(x => x.ForeignReleaseId = "ExistingId1")
+                .With(x => x.Monitored = true)
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "ExistingId2")
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "ExistingId3")
+                .Build() as List<AlbumRelease>;
+
+            GivenTwoMonitoredEditionsAndRemote(remote);
+
+            Mocker.GetMock<IRefreshAlbumReleaseService>()
+                .Verify(x => x.RefreshEntityInfo(It.Is<List<AlbumRelease>>(
+                                                     l => l.Count == 3 &&
+                                                     l.Where(y => y.Monitored).Select(y => y.ForeignReleaseId).OrderBy(y => y).SequenceEqual(new[] { "ExistingId1", "ExistingId2" })),
+                                                 It.IsAny<List<AlbumRelease>>(),
+                                                 It.IsAny<bool>(),
+                                                 It.IsAny<bool>()));
+        }
+
+        [Test]
+        public void refreshing_album_should_not_monitor_new_releases_when_several_editions_are_monitored()
+        {
+            var remote = Builder<AlbumRelease>.CreateListOfSize(4)
+                .All()
+                .With(x => x.Monitored = false)
+                .TheFirst(1)
+                .With(x => x.ForeignReleaseId = "ExistingId1")
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "ExistingId2")
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "ExistingId3")
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "NewId")
+                .With(x => x.Monitored = true)
+                .With(x => x.TrackCount = 99)
+                .Build() as List<AlbumRelease>;
+
+            GivenTwoMonitoredEditionsAndRemote(remote);
+
+            Mocker.GetMock<IRefreshAlbumReleaseService>()
+                .Verify(x => x.RefreshEntityInfo(It.Is<List<AlbumRelease>>(
+                                                     l => l.Count == 4 &&
+                                                     l.Where(y => y.Monitored).Select(y => y.ForeignReleaseId).OrderBy(y => y).SequenceEqual(new[] { "ExistingId1", "ExistingId2" })),
                                                  It.IsAny<List<AlbumRelease>>(),
                                                  It.IsAny<bool>(),
                                                  It.IsAny<bool>()));

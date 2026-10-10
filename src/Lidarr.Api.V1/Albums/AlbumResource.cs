@@ -53,7 +53,8 @@ namespace Lidarr.Api.V1.Albums
                 return null;
             }
 
-            var selectedRelease = model.AlbumReleases?.Value.SingleOrDefault(x => x.Monitored);
+            // Tomvis fork (MUSIC-63): several editions may be monitored; the primary one describes the album
+            var selectedRelease = model.AlbumReleases?.Value == null ? null : AlbumEditions.Primary(model, AlbumEditions.Monitored(model.AlbumReleases.Value));
 
             return new AlbumResource
             {

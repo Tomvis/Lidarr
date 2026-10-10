@@ -2,6 +2,7 @@ using System.Linq;
 using NLog;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Download;
+using NzbDrone.Core.Music;
 using NzbDrone.Core.Parser.Model;
 
 namespace NzbDrone.Core.MediaFiles.TrackImport.Specifications
@@ -17,7 +18,8 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Specifications
 
         public Decision IsSatisfiedBy(LocalAlbumRelease item, DownloadClientItem downloadClientItem)
         {
-            var existingRelease = item.AlbumRelease.Album.Value.AlbumReleases.Value.Single(x => x.Monitored);
+            // Tomvis fork (MUSIC-63): a monitored edition is compared with itself, not with another edition
+            var existingRelease = AlbumEditions.Current(item.AlbumRelease.Album.Value, item.AlbumRelease);
             var existingTrackCount = existingRelease.Tracks.Value.Count(x => x.HasFile);
             if (item.AlbumRelease.Id != existingRelease.Id &&
                 item.TrackCount < existingTrackCount)

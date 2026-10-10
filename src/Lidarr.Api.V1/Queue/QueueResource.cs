@@ -7,6 +7,7 @@ using Lidarr.Api.V1.CustomFormats;
 using Lidarr.Http.REST;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Download.TrackedDownloads;
+using NzbDrone.Core.Music;
 using NzbDrone.Core.Qualities;
 
 namespace Lidarr.Api.V1.Queue
@@ -54,7 +55,8 @@ namespace Lidarr.Api.V1.Queue
             var customFormats = model.RemoteAlbum?.CustomFormats;
             var customFormatScore = model.Artist?.QualityProfile?.Value?.CalculateCustomFormatScore(customFormats) ?? 0;
 
-            var albumRelease = model.Album?.AlbumReleases?.Value?.SingleOrDefault(x => x.Monitored);
+            // Tomvis fork (MUSIC-63): several editions may be monitored
+            var albumRelease = model.Album?.AlbumReleases?.Value == null ? null : AlbumEditions.Primary(model.Album, AlbumEditions.Monitored(model.Album.AlbumReleases.Value));
 
             return new QueueResource
             {

@@ -189,11 +189,14 @@ namespace NzbDrone.Core.Download
 
         public bool VerifyImport(TrackedDownload trackedDownload, List<ImportResult> importResults)
         {
+            // Tomvis fork (MUSIC-63): one edition of an album with several monitored is a whole download
+            var importedTracks = importResults.Where(c => c.Result == ImportResultType.Imported)
+                .SelectMany(c => c.ImportDecision.Item.Tracks)
+                .ToList();
+
             var allTracksImported =
                 (importResults.Any() && importResults.All(c => c.Result == ImportResultType.Imported)) ||
-                importResults.Where(c => c.Result == ImportResultType.Imported)
-                    .SelectMany(c => c.ImportDecision.Item.Tracks)
-                    .Count() >= Math.Max(1, trackedDownload.RemoteAlbum.Albums.Sum(x => x.AlbumReleases.Value.Where(y => y.Monitored).Sum(z => z.TrackCount)));
+                importedTracks.Count >= Math.Max(1, AlbumEditions.ExpectedTrackCount(trackedDownload.RemoteAlbum.Albums, importedTracks));
 
             if (allTracksImported)
             {

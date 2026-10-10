@@ -405,6 +405,29 @@ namespace NzbDrone.Core.Test.Download.CompletedDownloadServiceTests
             AssertImported();
         }
 
+        [Test]
+        public void should_mark_as_imported_when_one_of_several_monitored_editions_was_imported()
+        {
+            // Tomvis fork (MUSIC-63): a download carries one edition, not every monitored one
+            var album = CreateAlbum(1, 2);
+            album.AlbumReleases.Value[0].Id = 1;
+            album.AlbumReleases.Value.Add(new AlbumRelease { Id = 2, Monitored = true, TrackCount = 2 });
+            _trackedDownload.RemoteAlbum.Albums = new List<Album> { album };
+
+            Mocker.GetMock<IDownloadedTracksImportService>()
+                  .Setup(v => v.ProcessPath(It.IsAny<string>(), It.IsAny<ImportMode>(), It.IsAny<Artist>(), It.IsAny<DownloadClientItem>()))
+                  .Returns(new List<ImportResult>
+                           {
+                               new ImportResult(new ImportDecision<LocalTrack>(new LocalTrack { Path = @"C:\TestPath\01.flac".AsOsAgnostic(), Tracks = new List<Track> { new Track { Id = 21, AlbumReleaseId = 2 } } })),
+                               new ImportResult(new ImportDecision<LocalTrack>(new LocalTrack { Path = @"C:\TestPath\02.flac".AsOsAgnostic(), Tracks = new List<Track> { new Track { Id = 22, AlbumReleaseId = 2 } } })),
+                               new ImportResult(new ImportDecision<LocalTrack>(new LocalTrack { Path = @"C:\TestPath\cover.flac".AsOsAgnostic() }, new Rejection("Rejected!")), "Test Failure")
+                           });
+
+            Subject.Import(_trackedDownload);
+
+            AssertImported();
+        }
+
         private void AssertNotImported()
         {
             Mocker.GetMock<IEventAggregator>()

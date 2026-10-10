@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using NzbDrone.Core.Music;
 
 namespace NzbDrone.Core.Notifications.Webhook
@@ -18,7 +17,7 @@ namespace NzbDrone.Core.Notifications.Webhook
             Title = release.Title;
             Disambiguation = release.Disambiguation;
             Country = release.Country;
-            Format = FormatMedia(release.Media);
+            Format = AlbumEditions.FormatMedia(release.Media);
             TrackCount = release.TrackCount;
             Status = release.Status;
             ReleaseDate = release.ReleaseDate;
@@ -33,18 +32,5 @@ namespace NzbDrone.Core.Notifications.Webhook
         public int TrackCount { get; set; }
         public string Status { get; set; }
         public DateTime? ReleaseDate { get; set; }
-
-        // MusicBrainz style: "2xCD", "CD + DVD"
-        private static string FormatMedia(List<Medium> media)
-        {
-            if (media == null || media.Count == 0)
-            {
-                return null;
-            }
-
-            return string.Join(" + ", media.OrderBy(m => m.Number)
-                .GroupBy(m => m.Format)
-                .Select(g => g.Count() > 1 ? $"{g.Count()}x{g.Key}" : g.Key));
-        }
     }
 }

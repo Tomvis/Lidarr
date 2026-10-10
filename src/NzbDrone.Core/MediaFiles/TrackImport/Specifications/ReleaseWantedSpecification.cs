@@ -1,6 +1,7 @@
 using NLog;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Download;
+using NzbDrone.Core.Music;
 using NzbDrone.Core.Parser.Model;
 
 namespace NzbDrone.Core.MediaFiles.TrackImport.Specifications
@@ -16,7 +17,9 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Specifications
 
         public Decision IsSatisfiedBy(LocalAlbumRelease item, DownloadClientItem downloadClientItem)
         {
-            if (item.AlbumRelease.Monitored || item.AlbumRelease.Album.Value.AnyReleaseOk)
+            // Tomvis fork (MUSIC-63): with several editions monitored, AnyReleaseOk can't pull in another release
+            var album = item.AlbumRelease.Album.Value;
+            if (item.AlbumRelease.Monitored || (album.AnyReleaseOk && !AlbumEditions.IsMultiEdition(album)))
             {
                 return Decision.Accept();
             }

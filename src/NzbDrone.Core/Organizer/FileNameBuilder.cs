@@ -123,7 +123,7 @@ namespace NzbDrone.Core.Organizer
                 splitPattern = FormatMediumNumberTokens(splitPattern, "", tracks);
 
                 AddArtistTokens(tokenHandlers, artist);
-                AddAlbumTokens(tokenHandlers, album);
+                AddAlbumTokens(tokenHandlers, album, tracks.First().AlbumRelease.Value);
                 AddMediumTokens(tokenHandlers, tracks.First().AlbumRelease.Value.Media.SingleOrDefault(m => m.Number == tracks.First().MediumNumber));
                 AddTrackTokens(tokenHandlers, tracks, artist);
                 AddTrackTitlePlaceholderTokens(tokenHandlers);
@@ -322,12 +322,15 @@ namespace NzbDrone.Core.Organizer
             }
         }
 
-        private void AddAlbumTokens(Dictionary<string, Func<TokenMatch, string>> tokenHandlers, Album album)
+        private void AddAlbumTokens(Dictionary<string, Func<TokenMatch, string>> tokenHandlers, Album album, AlbumRelease release = null)
         {
-            tokenHandlers["{Album Title}"] = m => Truncate(album.Title, m.CustomFormat);
-            tokenHandlers["{Album CleanTitle}"] = m => Truncate(CleanTitle(album.Title), m.CustomFormat);
-            tokenHandlers["{Album TitleThe}"] = m => Truncate(TitleThe(album.Title), m.CustomFormat);
-            tokenHandlers["{Album CleanTitleThe}"] = m => Truncate(CleanTitleThe(album.Title), m.CustomFormat);
+            // Tomvis fork (MUSIC-63): an extra edition is named by its edition title, so it gets its own folder
+            var title = AlbumEditions.IsExtraEdition(album, release) ? AlbumEditions.EditionTitle(album, release) : album.Title;
+
+            tokenHandlers["{Album Title}"] = m => Truncate(title, m.CustomFormat);
+            tokenHandlers["{Album CleanTitle}"] = m => Truncate(CleanTitle(title), m.CustomFormat);
+            tokenHandlers["{Album TitleThe}"] = m => Truncate(TitleThe(title), m.CustomFormat);
+            tokenHandlers["{Album CleanTitleThe}"] = m => Truncate(CleanTitleThe(title), m.CustomFormat);
             tokenHandlers["{Album Type}"] = m => album.AlbumType;
             tokenHandlers["{Album Genre}"] = m => album.Genres.FirstOrDefault() ?? string.Empty;
             tokenHandlers["{Album MbId}"] = m => album.ForeignAlbumId ?? string.Empty;

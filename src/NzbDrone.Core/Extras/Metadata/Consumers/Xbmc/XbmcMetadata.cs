@@ -141,7 +141,8 @@ namespace NzbDrone.Core.Extras.Metadata.Consumers.Xbmc
                 return null;
             }
 
-            var albumRelease = album.AlbumReleases.Value.Single(x => x.Monitored);
+            // Tomvis fork (MUSIC-63): the album folder belongs to the primary edition
+            var albumRelease = AlbumEditions.Primary(album, AlbumEditions.Monitored(album.AlbumReleases.Value));
 
             _logger.Debug("Generating album.nfo for: {0}", album.Title);
             var sb = new StringBuilder();

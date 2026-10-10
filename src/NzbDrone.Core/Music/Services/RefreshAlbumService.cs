@@ -320,9 +320,29 @@ namespace NzbDrone.Core.Music
         {
             var refreshList = localChildren.All;
 
-            // make sure only one of the releases ends up monitored
-            localChildren.Old.ForEach(x => x.Monitored = false);
-            MonitorSingleRelease(localChildren.Future);
+            // Tomvis fork (MUSIC-63): several editions monitored in the DB stay monitored (a merged one passes it on
+            // to its target) and new releases don't join them. One monitored release keeps upstream's rule.
+            var multiEdition = localChildren.UpToDate.Concat(localChildren.Updated).Concat(localChildren.Merged.Select(x => x.Item1))
+                .Count(x => x.Monitored) > 1;
+
+            if (multiEdition)
+            {
+                var mergedTargets = localChildren.Merged.Where(x => x.Item1.Monitored).Select(x => x.Item2).ToList();
+                localChildren.Added.Except(mergedTargets).ToList().ForEach(x => x.Monitored = false);
+                mergedTargets.ForEach(x => x.Monitored = true);
+                localChildren.Old.ForEach(x => x.Monitored = false);
+
+                if (!localChildren.Future.Any(x => x.Monitored))
+                {
+                    MonitorSingleRelease(localChildren.Future);
+                }
+            }
+            else
+            {
+                // make sure only one of the releases ends up monitored
+                localChildren.Old.ForEach(x => x.Monitored = false);
+                MonitorSingleRelease(localChildren.Future);
+            }
 
             refreshList.ForEach(x => _logger.Trace($"release: {x} monitored: {x.Monitored}"));
 

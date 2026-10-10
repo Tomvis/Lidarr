@@ -453,12 +453,14 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Manual
                     }
                 }
 
-                var remoteTrackCount = Math.Max(1, trackedDownload.RemoteAlbum?.Albums.Sum(x => x.AlbumReleases.Value.Where(y => y.Monitored).Sum(z => z.TrackCount)) ?? 1);
-
                 var importResults = groupedTrackedDownload.Select(c => c.ImportResult).ToList();
-                var importedTrackCount = importResults.Where(c => c.Result == ImportResultType.Imported)
+                var importedTracks = importResults.Where(c => c.Result == ImportResultType.Imported)
                     .SelectMany(c => c.ImportDecision.Item.Tracks)
-                    .Count();
+                    .ToList();
+                var importedTrackCount = importedTracks.Count;
+
+                // Tomvis fork (MUSIC-63): one edition of an album with several monitored is a whole download
+                var remoteTrackCount = Math.Max(1, trackedDownload.RemoteAlbum?.Albums == null ? 1 : AlbumEditions.ExpectedTrackCount(trackedDownload.RemoteAlbum.Albums, importedTracks));
 
                 var allTracksImported = (importResults.Any() && importResults.All(c => c.Result == ImportResultType.Imported)) || importedTrackCount >= remoteTrackCount;
 

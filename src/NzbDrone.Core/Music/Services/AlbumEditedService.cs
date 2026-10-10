@@ -26,7 +26,27 @@ namespace NzbDrone.Core.Music
             {
                 var new_monitored = new HashSet<int>(message.Album.AlbumReleases.Value.Where(x => x.Monitored).Select(x => x.Id));
                 var old_monitored = new HashSet<int>(message.OldAlbum.AlbumReleases.Value.Where(x => x.Monitored).Select(x => x.Id));
-                if (!new_monitored.SetEquals(old_monitored) ||
+
+                // Tomvis fork (MUSIC-63): when several editions are involved, only the editions that left the
+                // monitored set lose their files; the rescan picks up files for an added edition
+                if (new_monitored.Count > 1 || old_monitored.Count > 1)
+                {
+                    if (new_monitored.SetEquals(old_monitored))
+                    {
+                        return;
+                    }
+
+                    var removed = old_monitored.Except(new_monitored).ToList();
+                    if (removed.Any())
+                    {
+                        var removedTracks = _trackService.GetTracksByReleases(removed);
+                        removedTracks.ForEach(x => x.TrackFileId = 0);
+                        _trackService.SetFileIds(removedTracks);
+                    }
+
+                    _commandQueueManager.Push(new RescanFoldersCommand(new List<string> { message.Album.Artist.Value.Path }, FilterFilesType.Matched, false, null));
+                }
+                else if (!new_monitored.SetEquals(old_monitored) ||
                     (!message.OldAlbum.AnyReleaseOk && message.Album.AnyReleaseOk))
                 {
                     // Unlink any old track files
