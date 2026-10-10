@@ -398,6 +398,101 @@ namespace NzbDrone.Core.Test.MusicTests
                                                  It.IsAny<bool>()));
         }
 
+        // Tomvis fork (MUSIC-64): a release switch on refresh passes the wanted tracks on to the new release
+        [Test]
+        public void refreshing_album_should_carry_wanted_tracks_over_when_monitored_release_changes()
+        {
+            var newAlbum = Builder<Album>.CreateNew()
+                .With(x => x.ArtistMetadata = Builder<ArtistMetadata>.CreateNew().Build())
+                .Build();
+            var albumCopy = Builder<Album>.CreateNew()
+                .With(x => x.ArtistMetadata = Builder<ArtistMetadata>.CreateNew().Build())
+                .Build();
+
+            var releases = Builder<AlbumRelease>.CreateListOfSize(2)
+                .All()
+                .With(x => x.AlbumId = newAlbum.Id)
+                .With(x => x.Monitored = false)
+                .TheFirst(1)
+                .With(x => x.ForeignReleaseId = "ExistingId1")
+                .With(x => x.Monitored = true)
+                .TheNext(1)
+                .With(x => x.Id = 0)
+                .With(x => x.ForeignReleaseId = "NotExistingId2")
+                .Build() as List<AlbumRelease>;
+            newAlbum.AlbumReleases = releases;
+            albumCopy.AlbumReleases = releases;
+
+            // ExistingId2 is monitored but will be deleted, so another release takes over
+            var existingReleases = Builder<AlbumRelease>.CreateListOfSize(2)
+                .All()
+                .With(x => x.Monitored = false)
+                .TheFirst(1)
+                .With(x => x.Id = 1)
+                .With(x => x.ForeignReleaseId = "ExistingId1")
+                .TheNext(1)
+                .With(x => x.Id = 2)
+                .With(x => x.ForeignReleaseId = "ExistingId2")
+                .With(x => x.Monitored = true)
+                .Build() as List<AlbumRelease>;
+
+            var oldTracks = new List<Track> { new Track { ForeignRecordingId = "a", Monitored = false } };
+            var newTracks = new List<Track> { new Track { ForeignRecordingId = "a", Monitored = true } };
+
+            Mocker.GetMock<IReleaseService>()
+                .Setup(x => x.GetReleasesForRefresh(It.IsAny<int>(), It.IsAny<List<string>>()))
+                .Returns(existingReleases);
+            Mocker.GetMock<IProvideAlbumInfo>()
+                .Setup(x => x.GetAlbumInfo(It.IsAny<string>()))
+                .Returns(Tuple.Create("dummy string", albumCopy, new List<ArtistMetadata>()));
+            Mocker.GetMock<ITrackService>().Setup(x => x.GetTracksByRelease(It.IsAny<int>())).Returns(newTracks);
+            Mocker.GetMock<ITrackService>().Setup(x => x.GetTracksByRelease(2)).Returns(oldTracks);
+
+            Subject.RefreshAlbumInfo(newAlbum, null, false);
+
+            Mocker.GetMock<ITrackService>()
+                .Verify(x => x.CarryOverMonitoring(oldTracks, newTracks), Times.Once());
+        }
+
+        [Test]
+        public void refreshing_album_should_not_carry_over_when_monitored_release_unchanged()
+        {
+            var newAlbum = Builder<Album>.CreateNew()
+                .With(x => x.ArtistMetadata = Builder<ArtistMetadata>.CreateNew().Build())
+                .Build();
+            var albumCopy = Builder<Album>.CreateNew()
+                .With(x => x.ArtistMetadata = Builder<ArtistMetadata>.CreateNew().Build())
+                .Build();
+
+            var releases = Builder<AlbumRelease>.CreateListOfSize(1)
+                .All()
+                .With(x => x.AlbumId = newAlbum.Id)
+                .With(x => x.ForeignReleaseId = "ExistingId1")
+                .With(x => x.Monitored = true)
+                .Build() as List<AlbumRelease>;
+            newAlbum.AlbumReleases = releases;
+            albumCopy.AlbumReleases = releases;
+
+            var existingReleases = Builder<AlbumRelease>.CreateListOfSize(1)
+                .All()
+                .With(x => x.Id = 1)
+                .With(x => x.ForeignReleaseId = "ExistingId1")
+                .With(x => x.Monitored = true)
+                .Build() as List<AlbumRelease>;
+
+            Mocker.GetMock<IReleaseService>()
+                .Setup(x => x.GetReleasesForRefresh(It.IsAny<int>(), It.IsAny<List<string>>()))
+                .Returns(existingReleases);
+            Mocker.GetMock<IProvideAlbumInfo>()
+                .Setup(x => x.GetAlbumInfo(It.IsAny<string>()))
+                .Returns(Tuple.Create("dummy string", albumCopy, new List<ArtistMetadata>()));
+
+            Subject.RefreshAlbumInfo(newAlbum, null, false);
+
+            Mocker.GetMock<ITrackService>()
+                .Verify(x => x.CarryOverMonitoring(It.IsAny<List<Track>>(), It.IsAny<List<Track>>()), Times.Never());
+        }
+
         private void GivenTwoMonitoredEditionsAndRemote(List<AlbumRelease> remote)
         {
             var newAlbum = Builder<Album>.CreateNew()

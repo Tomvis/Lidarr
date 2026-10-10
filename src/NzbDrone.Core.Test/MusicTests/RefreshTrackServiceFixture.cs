@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FizzWare.NBuilder;
+using FluentAssertions;
 using Moq;
 using NUnit.Framework;
 using NzbDrone.Common.Extensions;
@@ -49,6 +50,41 @@ namespace NzbDrone.Core.Test.MusicTests
                 .Verify(v => v.SyncTags(It.Is<List<Track>>(x => x.Count == 1 &&
                                                            x[0].AlbumRelease != null &&
                                                            x[0].AlbumRelease.IsLoaded == true)));
+        }
+
+        // Tomvis fork (MUSIC-64): the wanted flag survives MusicBrainz track merges
+        [TestCase(true, true)]
+        [TestCase(false, false)]
+        public void new_merge_target_should_take_wanted_flag_of_merged_track(bool mergedWanted, bool expected)
+        {
+            var toMerge = _allTracks[0];
+            toMerge.Monitored = mergedWanted;
+            var target = _allTracks[1];
+            target.Monitored = true;
+
+            var add = new List<Track> { target };
+            var merge = new List<Tuple<Track, Track>> { Tuple.Create(toMerge, target) };
+
+            Subject.RefreshTrackInfo(add, new List<Track>(), merge, new List<Track>(), new List<Track>(), _allTracks, false);
+
+            target.Monitored.Should().Be(expected);
+        }
+
+        [TestCase(true, false, true)]
+        [TestCase(false, true, true)]
+        [TestCase(false, false, false)]
+        public void existing_merge_target_should_stay_wanted_if_either_track_was_wanted(bool targetWanted, bool mergedWanted, bool expected)
+        {
+            var toMerge = _allTracks[0];
+            toMerge.Monitored = mergedWanted;
+            var target = _allTracks[1];
+            target.Monitored = targetWanted;
+
+            var merge = new List<Tuple<Track, Track>> { Tuple.Create(toMerge, target) };
+
+            Subject.RefreshTrackInfo(new List<Track>(), new List<Track>(), merge, new List<Track>(), new List<Track>(), _allTracks, false);
+
+            target.Monitored.Should().Be(expected);
         }
     }
 }

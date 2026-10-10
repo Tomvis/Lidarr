@@ -25,6 +25,8 @@ namespace NzbDrone.Core.Music
         void UpdateMany(List<Track> tracks);
         void DeleteMany(List<Track> tracks);
         void SetFileIds(List<Track> tracks);
+        List<Track> SetMonitored(IEnumerable<int> trackIds, bool monitored);
+        void CarryOverMonitoring(List<Track> previousReleaseTracks, List<Track> newReleaseTracks);
     }
 
     public class TrackService : ITrackService,
@@ -120,6 +122,33 @@ namespace NzbDrone.Core.Music
         public void SetFileIds(List<Track> tracks)
         {
             _trackRepository.SetFileId(tracks);
+        }
+
+        // Tomvis fork (MUSIC-64): want or unwant single tracks
+        public List<Track> SetMonitored(IEnumerable<int> trackIds, bool monitored)
+        {
+            var tracks = _trackRepository.Get(trackIds).ToList();
+            var changed = tracks.Where(t => t.Monitored != monitored).ToList();
+            changed.ForEach(t => t.Monitored = monitored);
+            _trackRepository.SetMonitored(changed);
+            return tracks;
+        }
+
+        // Tomvis fork (MUSIC-64): when an album that wants only some tracks moves to another release,
+        // the new release wants the same recordings and nothing else
+        public void CarryOverMonitoring(List<Track> previousReleaseTracks, List<Track> newReleaseTracks)
+        {
+            if (previousReleaseTracks.All(t => t.Monitored))
+            {
+                return;
+            }
+
+            var wanted = previousReleaseTracks.Where(t => t.Monitored).Select(t => t.ForeignRecordingId).ToHashSet();
+            var changed = newReleaseTracks.Where(t => t.Monitored != wanted.Contains(t.ForeignRecordingId)).ToList();
+            changed.ForEach(t => t.Monitored = !t.Monitored);
+
+            _logger.Debug("Carrying {0} wanted recordings over to the new release, {1} tracks changed", wanted.Count, changed.Count);
+            _trackRepository.SetMonitored(changed);
         }
 
         public void Handle(ReleaseDeletedEvent message)

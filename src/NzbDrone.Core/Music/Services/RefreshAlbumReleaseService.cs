@@ -95,6 +95,9 @@ namespace NzbDrone.Core.Music
 
             // make sure title is not null
             child.Title = child.Title ?? "Unknown";
+
+            // Tomvis fork (MUSIC-64): a release that wants only some tracks doesn't want tracks MusicBrainz adds
+            child.Monitored = entity.Id == 0 || _trackService.GetTracksByRelease(entity.Id).All(t => t.Monitored);
         }
 
         protected override void PrepareExistingChild(Track local, Track remote, AlbumRelease entity)

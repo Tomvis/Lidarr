@@ -41,6 +41,10 @@ namespace NzbDrone.Core.Test.MusicTests
             Mocker.GetMock<ITrackService>()
                 .Setup(s => s.GetTracksForRefresh(_release.Id, It.IsAny<List<string>>()))
                 .Returns(_tracks);
+
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(It.IsAny<int>()))
+                .Returns(new List<Track>());
         }
 
         [Test]
@@ -133,6 +137,42 @@ namespace NzbDrone.Core.Test.MusicTests
 
             Mocker.GetMock<IReleaseService>()
                 .Verify(v => v.UpdateMany(It.Is<List<AlbumRelease>>(s => s.First().ForeignReleaseId == newInfo.ForeignReleaseId)));
+        }
+
+        // Tomvis fork (MUSIC-64): a track MusicBrainz adds to a release that wants only some tracks is not wanted
+        [TestCase(true, true)]
+        [TestCase(false, false)]
+        public void new_track_should_be_wanted_only_if_release_wants_every_track(bool allWanted, bool expected)
+        {
+            _tracks.ForEach(x => x.Monitored = true);
+            _tracks[0].Monitored = allWanted;
+
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(_release.Id))
+                .Returns(_tracks);
+
+            var newTrack = Builder<Track>.CreateNew()
+                .With(x => x.Id = 0)
+                .With(x => x.ForeignTrackId = "added")
+                .With(x => x.OldForeignTrackIds = new List<string>())
+                .With(x => x.ArtistMetadata = _metadata)
+                .With(x => x.Monitored = true)
+                .Build();
+
+            var newInfo = _release.JsonClone();
+            newInfo.Tracks = _tracks.Select(x => x.JsonClone()).Concat(new[] { newTrack }).ToList();
+            newInfo.Tracks.Value.ForEach(x => x.ArtistMetadata = _metadata);
+
+            Subject.RefreshEntityInfo(_release, new List<AlbumRelease> { newInfo }, false, false, null);
+
+            Mocker.GetMock<IRefreshTrackService>()
+                .Verify(v => v.RefreshTrackInfo(It.Is<List<Track>>(x => x.Single().ForeignTrackId == "added" && x.Single().Monitored == expected),
+                                                It.IsAny<List<Track>>(),
+                                                It.IsAny<List<Tuple<Track, Track>>>(),
+                                                It.IsAny<List<Track>>(),
+                                                It.IsAny<List<Track>>(),
+                                                It.IsAny<List<Track>>(),
+                                                It.IsAny<bool>()));
         }
     }
 }

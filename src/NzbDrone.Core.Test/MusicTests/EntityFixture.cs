@@ -120,7 +120,8 @@ namespace NzbDrone.Core.Test.MusicTests
             var different = GivenTrack();
 
             // make item2 different in the property under consideration
-            var differentEntry = prop.GetValue(different);
+            // (AutoFixture alternates bools per created value, so with two bool fields both tracks can match)
+            var differentEntry = prop.PropertyType == typeof(bool) ? !(bool)prop.GetValue(item1) : prop.GetValue(different);
             prop.SetValue(item2, differentEntry);
 
             item1.Should().NotBeSameAs(item2);

@@ -32,6 +32,7 @@ namespace NzbDrone.Core.Music
         private readonly IReleaseService _releaseService;
         private readonly IProvideAlbumInfo _albumInfo;
         private readonly IRefreshAlbumReleaseService _refreshAlbumReleaseService;
+        private readonly ITrackService _trackService;
         private readonly IMediaFileService _mediaFileService;
         private readonly IHistoryService _historyService;
         private readonly IEventAggregator _eventAggregator;
@@ -48,6 +49,7 @@ namespace NzbDrone.Core.Music
                                    IReleaseService releaseService,
                                    IProvideAlbumInfo albumInfo,
                                    IRefreshAlbumReleaseService refreshAlbumReleaseService,
+                                   ITrackService trackService,
                                    IMediaFileService mediaFileService,
                                    IHistoryService historyService,
                                    IEventAggregator eventAggregator,
@@ -64,6 +66,7 @@ namespace NzbDrone.Core.Music
             _releaseService = releaseService;
             _albumInfo = albumInfo;
             _refreshAlbumReleaseService = refreshAlbumReleaseService;
+            _trackService = trackService;
             _mediaFileService = mediaFileService;
             _historyService = historyService;
             _eventAggregator = eventAggregator;
@@ -319,6 +322,7 @@ namespace NzbDrone.Core.Music
         protected override bool RefreshChildren(SortedChildren localChildren, List<AlbumRelease> remoteChildren, bool forceChildRefresh, bool forceUpdateFileTags, DateTime? lastUpdate)
         {
             var refreshList = localChildren.All;
+            var previouslyMonitored = refreshList.Where(x => x.Monitored && x.Id > 0).ToList();
 
             // Tomvis fork (MUSIC-63): several editions monitored in the DB stay monitored (a merged one passes it on
             // to its target) and new releases don't join them. One monitored release keeps upstream's rule.
@@ -346,7 +350,20 @@ namespace NzbDrone.Core.Music
 
             refreshList.ForEach(x => _logger.Trace($"release: {x} monitored: {x.Monitored}"));
 
-            return _refreshAlbumReleaseService.RefreshEntityInfo(refreshList, remoteChildren, forceChildRefresh, forceUpdateFileTags);
+            // Tomvis fork (MUSIC-64): one monitored release swapped for another passes its wanted tracks on.
+            // Read the old release's tracks now: a deleted release loses them in the refresh below.
+            var nowMonitored = refreshList.Where(x => x.Monitored).ToList();
+            var switched = previouslyMonitored.Count == 1 && nowMonitored.Count == 1 && nowMonitored[0].Id != previouslyMonitored[0].Id;
+            var previousTracks = switched ? _trackService.GetTracksByRelease(previouslyMonitored[0].Id) : null;
+
+            var updated = _refreshAlbumReleaseService.RefreshEntityInfo(refreshList, remoteChildren, forceChildRefresh, forceUpdateFileTags);
+
+            if (switched)
+            {
+                _trackService.CarryOverMonitoring(previousTracks, _trackService.GetTracksByRelease(nowMonitored[0].Id));
+            }
+
+            return updated;
         }
 
         protected override void PublishEntityUpdatedEvent(Album entity)

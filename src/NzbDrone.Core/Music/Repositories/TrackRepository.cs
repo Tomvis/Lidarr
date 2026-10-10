@@ -18,6 +18,7 @@ namespace NzbDrone.Core.Music
         List<Track> TracksWithFiles(int artistId);
         List<Track> TracksWithoutFiles(int albumId);
         void SetFileId(List<Track> tracks);
+        void SetMonitored(List<Track> tracks);
         void DetachTrackFile(int trackFileId);
     }
 
@@ -107,6 +108,11 @@ namespace NzbDrone.Core.Music
         public void SetFileId(List<Track> tracks)
         {
             SetFields(tracks, t => t.TrackFileId);
+        }
+
+        public void SetMonitored(List<Track> tracks)
+        {
+            SetFields(tracks, t => t.Monitored);
         }
 
         public void DetachTrackFile(int trackFileId)

@@ -52,6 +52,9 @@ namespace NzbDrone.Core.Music
                     mergeTarget.TrackFileId = trackToMerge.TrackFileId;
                 }
 
+                // Tomvis fork (MUSIC-64): a new target takes the merged track's wanted flag; an existing one stays wanted if either was
+                mergeTarget.Monitored = add.Contains(mergeTarget) ? trackToMerge.Monitored : mergeTarget.Monitored || trackToMerge.Monitored;
+
                 if (!updateList.Contains(mergeTarget))
                 {
                     updateList.Add(mergeTarget);
