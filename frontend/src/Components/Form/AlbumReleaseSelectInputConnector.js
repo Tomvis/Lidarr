@@ -5,7 +5,7 @@ import { connect } from 'react-redux';
 import { createSelector } from 'reselect';
 import shortenList from 'Utilities/String/shortenList';
 import titleCase from 'Utilities/String/titleCase';
-import SelectInput from './SelectInput';
+import EnhancedSelectInput from './EnhancedSelectInput';
 
 function createMapStateToProps() {
   return createSelector(
@@ -35,7 +35,8 @@ function createMapStateToProps() {
 
       const sortedValues = _.orderBy(values, ['value']);
 
-      const value = _.find(albumReleases.value, { monitored: true }).foreignReleaseId;
+      // Tomvis fork (MUSIC-68): an album may monitor several releases (editions, MUSIC-63)
+      const value = _.map(_.filter(albumReleases.value, { monitored: true }), 'foreignReleaseId');
 
       return {
         values: sortedValues,
@@ -55,8 +56,12 @@ class AlbumReleaseSelectInputConnector extends Component {
       albumReleases
     } = this.props;
 
-    const updatedReleases = _.map(albumReleases.value, (e) => ({ ...e, monitored: false }));
-    _.find(updatedReleases, { foreignReleaseId: value }).monitored = true;
+    // An album keeps at least one monitored release
+    if (!value.length) {
+      return;
+    }
+
+    const updatedReleases = _.map(albumReleases.value, (e) => ({ ...e, monitored: value.includes(e.foreignReleaseId) }));
 
     this.props.onChange({ name, value: updatedReleases });
   };
@@ -64,7 +69,7 @@ class AlbumReleaseSelectInputConnector extends Component {
   render() {
 
     return (
-      <SelectInput
+      <EnhancedSelectInput
         {...this.props}
         onChange={this.onChange}
       />

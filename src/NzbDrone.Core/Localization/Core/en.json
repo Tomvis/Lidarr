@@ -1001,7 +1001,7 @@
   "ReleaseStatuses": "Release Statuses",
   "ReleaseTitle": "Release Title",
   "ReleaseWillBeProcessedInterp": "Release will be processed {0}",
-  "ReleasesHelpText": "Change release for this album",
+  "ReleasesHelpText": "Releases to monitor for this album. Pick more than one to keep several editions",
   "Reload": "Reload",
   "RemotePath": "Remote Path",
   "RemotePathHelpText": "Root path to the directory that the Download Client accesses",
