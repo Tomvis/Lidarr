@@ -1,0 +1,14 @@
+.selectedValue {
+  composes: selectedValue from '~./EnhancedSelectInputSelectedValue.css';
+
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.label {
+  @add-mixin truncate;
+
+  max-width: 100%;
+}

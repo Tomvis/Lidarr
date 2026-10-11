@@ -1,0 +1,6 @@
+.albumReleaseSelect {
+  composes: enhancedSelect from '~./EnhancedSelectInput.css';
+
+  min-height: 35px;
+  height: auto;
+}

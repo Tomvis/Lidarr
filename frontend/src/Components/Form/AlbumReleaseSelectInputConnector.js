@@ -5,7 +5,9 @@ import { connect } from 'react-redux';
 import { createSelector } from 'reselect';
 import shortenList from 'Utilities/String/shortenList';
 import titleCase from 'Utilities/String/titleCase';
+import AlbumReleaseSelectInputSelectedValue from './AlbumReleaseSelectInputSelectedValue';
 import EnhancedSelectInput from './EnhancedSelectInput';
+import styles from './AlbumReleaseSelectInput.css';
 
 function createMapStateToProps() {
   return createSelector(
@@ -71,6 +73,8 @@ class AlbumReleaseSelectInputConnector extends Component {
     return (
       <EnhancedSelectInput
         {...this.props}
+        className={styles.albumReleaseSelect}
+        selectedValueComponent={AlbumReleaseSelectInputSelectedValue}
         onChange={this.onChange}
       />
     );
