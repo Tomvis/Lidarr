@@ -308,7 +308,7 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Identification
 
             var bestDistance = 1.0;
 
-            foreach (var candidateRelease in candidateReleases)
+            foreach (var candidateRelease in WithoutOtherReleasesOfPartialAlbums(candidateReleases))
             {
                 var release = candidateRelease.AlbumRelease;
                 _logger.Debug("Trying Release {0} [{1}, {2} tracks, {3} existing]", release, release.Title, release.TrackCount, candidateRelease.ExistingTracks.Count);
@@ -345,6 +345,24 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Identification
 
             watch.Stop();
             _logger.Debug($"Best release: {localAlbumRelease.AlbumRelease} Distance {localAlbumRelease.Distance.NormalizedDistance()} found in {watch.ElapsedMilliseconds}ms");
+        }
+
+        // Tomvis fork (MUSIC-64): a partial album's wanted tracks live on its monitored release, and another release
+        // is rejected (ReleaseWantedSpecification). A lone downloaded file fits every release equally, so don't let it
+        // pick one of the others.
+        public static List<CandidateAlbumRelease> WithoutOtherReleasesOfPartialAlbums(List<CandidateAlbumRelease> candidates)
+        {
+            var partialAlbums = candidates
+                .Where(c => c.AlbumRelease.Monitored && WantedTracks.IsPartial(c.AlbumRelease))
+                .Select(c => c.AlbumRelease.AlbumId)
+                .ToHashSet();
+
+            if (partialAlbums.Count == 0)
+            {
+                return candidates;
+            }
+
+            return candidates.Where(c => c.AlbumRelease.Monitored || !partialAlbums.Contains(c.AlbumRelease.AlbumId)).ToList();
         }
 
         public TrackMapping MapReleaseTracks(List<LocalTrack> localTracks, List<Track> mbTracks)

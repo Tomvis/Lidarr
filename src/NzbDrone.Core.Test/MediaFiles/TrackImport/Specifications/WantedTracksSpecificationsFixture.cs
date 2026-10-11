@@ -3,6 +3,7 @@ using System.Linq;
 using FizzWare.NBuilder;
 using FluentAssertions;
 using NUnit.Framework;
+using NzbDrone.Core.MediaFiles.TrackImport.Identification;
 using NzbDrone.Core.MediaFiles.TrackImport.Specifications;
 using NzbDrone.Core.Music;
 using NzbDrone.Core.Parser.Model;
@@ -150,6 +151,36 @@ namespace NzbDrone.Core.Test.MediaFiles.TrackImport.Specifications
         public void should_accept_unmatched_file()
         {
             Subject.IsSatisfiedBy(LocalTrack(false), null).Accepted.Should().BeTrue();
+        }
+    }
+
+    [TestFixture]
+    public class PartialAlbumCandidatesFixture : WantedTracksFixture<NoMissingOrUnmatchedTracksSpecification>
+    {
+        private List<CandidateAlbumRelease> Candidates()
+        {
+            Other.AlbumId = Monitored.AlbumId;
+
+            return new List<CandidateAlbumRelease>
+            {
+                new CandidateAlbumRelease { AlbumRelease = Other },
+                new CandidateAlbumRelease { AlbumRelease = Monitored }
+            };
+        }
+
+        [Test]
+        public void should_keep_every_release_when_album_wants_every_track()
+        {
+            IdentificationService.WithoutOtherReleasesOfPartialAlbums(Candidates()).Should().HaveCount(2);
+        }
+
+        [Test]
+        public void should_keep_only_the_monitored_release_when_album_wants_only_some_tracks()
+        {
+            WantOnlyFirstTrack();
+
+            IdentificationService.WithoutOtherReleasesOfPartialAlbums(Candidates())
+                .Select(c => c.AlbumRelease).Should().BeEquivalentTo(new[] { Monitored });
         }
     }
 
