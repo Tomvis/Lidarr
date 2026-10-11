@@ -73,11 +73,12 @@ class AlbumDetailsMedium extends Component {
 
   _expandByDefault() {
     const {
+      mediumKey,
       mediumNumber,
       onExpandPress
     } = this.props;
 
-    onExpandPress(mediumNumber, mediumNumber === 1);
+    onExpandPress(mediumKey, mediumNumber === 1);
   }
 
   //
@@ -85,11 +86,11 @@ class AlbumDetailsMedium extends Component {
 
   onExpandPress = () => {
     const {
-      mediumNumber,
+      mediumKey,
       isExpanded
     } = this.props;
 
-    this.props.onExpandPress(mediumNumber, !isExpanded);
+    this.props.onExpandPress(mediumKey, !isExpanded);
   };
 
   //
@@ -99,6 +100,7 @@ class AlbumDetailsMedium extends Component {
     const {
       mediumNumber,
       mediumFormat,
+      editionTitle,
       albumMonitored,
       albumReleaseDate,
       items,
@@ -123,7 +125,7 @@ class AlbumDetailsMedium extends Component {
             {
               <div>
                 <span className={styles.mediumNumber}>
-                  {mediumFormat} {mediumNumber}
+                  {editionTitle ? `${editionTitle} · ` : ''}{mediumFormat} {mediumNumber}
                 </span>
               </div>
             }
@@ -207,7 +209,9 @@ AlbumDetailsMedium.propTypes = {
   albumId: PropTypes.number.isRequired,
   albumMonitored: PropTypes.bool.isRequired,
   albumReleaseDate: PropTypes.string,
+  mediumKey: PropTypes.string.isRequired,
   mediumNumber: PropTypes.number.isRequired,
+  editionTitle: PropTypes.string,
   mediumFormat: PropTypes.string.isRequired,
   items: PropTypes.arrayOf(PropTypes.object).isRequired,
   columns: PropTypes.arrayOf(PropTypes.object).isRequired,

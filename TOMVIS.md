@@ -19,6 +19,7 @@ Branch `enhanced` = upstream `develop` tag + fork commits. The image (`docker/Do
 - Refresh keeps every monitored edition and never monitors new MB releases. An import replaces/upgrades only the edition identification picked (not pinned to the grab: a mislabeled grab must not import one edition as another). Removing an edition unlinks only its tracks.
 - Search: a result is matched to an edition by the words that set it apart from the album (`orchestral`, `instrumentals`); no such words = primary. Cutoff/upgrade checks use that edition's files; a result naming an unmonitored edition is rejected (`EditionSpecification`). A result titled as a monitored edition (`Ihsahn (Orchestral Version)`) matches an album search. Grabs and the queue check are per (album, edition), so one search can grab every missing edition. The Grab webhook's `albumRelease` is the matched edition.
 - UI: Edit Album's release picker is a multi-select of monitored editions (MUSIC-68); it refuses to empty the list. Upstream's single select unmonitored every other edition on change.
+- Album page: with several monitored editions, one track section per edition medium, headed by the edition title (`track.albumReleaseId` in the API). Upstream grouped by medium number only, so editions' medium 1 merged.
 - Not done: plugin indexers passing an exact release id.
 
 ## Rescans keep download provenance (MUSIC-68)

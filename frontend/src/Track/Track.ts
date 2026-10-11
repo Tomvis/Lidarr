@@ -6,6 +6,7 @@ interface Track extends ModelBase {
   foreignRecordingId: string;
   trackFileId: number;
   albumId: number;
+  albumReleaseId: number;
   explicit: boolean;
   absoluteTrackNumber: number;
   trackNumber: string;

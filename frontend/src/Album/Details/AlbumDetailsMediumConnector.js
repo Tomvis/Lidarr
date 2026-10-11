@@ -11,11 +11,13 @@ import AlbumDetailsMedium from './AlbumDetailsMedium';
 function createMapStateToProps() {
   return createSelector(
     (state, { mediumNumber }) => mediumNumber,
+    (state, { albumReleaseId }) => albumReleaseId,
     (state) => state.tracks,
     createDimensionsSelector(),
-    (mediumNumber, tracks, dimensions) => {
+    (mediumNumber, albumReleaseId, tracks, dimensions) => {
 
-      const tracksInMedium = _.filter(tracks.items, { mediumNumber });
+      // Tomvis fork (MUSIC-68): an edition's section shows only that edition's tracks
+      const tracksInMedium = _.filter(tracks.items, albumReleaseId ? { mediumNumber, albumReleaseId } : { mediumNumber });
       const sortedTracks = _.orderBy(tracksInMedium, ['absoluteTrackNumber'], ['asc']);
 
       return {
@@ -59,6 +61,7 @@ AlbumDetailsMediumConnector.propTypes = {
   albumMonitored: PropTypes.bool.isRequired,
   albumReleaseDate: PropTypes.string,
   mediumNumber: PropTypes.number.isRequired,
+  albumReleaseId: PropTypes.number,
   setTracksTableOption: PropTypes.func.isRequired,
   executeCommand: PropTypes.func.isRequired
 };

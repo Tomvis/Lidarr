@@ -61,6 +61,30 @@ function formatDuration(timeSpan) {
   return `${hours} ${hoursText} ${minutes} ${minText}`;
 }
 
+// Tomvis fork (MUSIC-68): with several monitored editions, one section per edition medium,
+// primary edition first (titled like the album, no disambiguation, lowest id), as the backend picks it
+function getMediaSections(title, media, releases = []) {
+  const editions = _.orderBy(
+    _.filter(releases, { monitored: true }),
+    [(r) => r.title.toLowerCase() !== title.toLowerCase(), (r) => !!r.disambiguation, 'id']
+  );
+
+  if (editions.length < 2) {
+    return media.map((medium) => ({ ...medium, mediumKey: `${medium.mediumNumber}` }));
+  }
+
+  return _.flatMap(editions, (edition) => {
+    const editionTitle = edition.disambiguation ? `${edition.title} (${edition.disambiguation})` : edition.title;
+
+    return _.filter(edition.media, (medium) => medium.mediumNumber > 0).map((medium) => ({
+      ...medium,
+      mediumKey: `${edition.id}-${medium.mediumNumber}`,
+      albumReleaseId: edition.id,
+      editionTitle
+    }));
+  });
+}
+
 function getExpandedState(newState) {
   return {
     allExpanded: newState.allSelected,
@@ -197,6 +221,7 @@ class AlbumDetails extends Component {
       genres,
       links,
       media,
+      releases,
       isSaving,
       isFetching,
       isPopulated,
@@ -581,15 +606,15 @@ class AlbumDetails extends Component {
               isPopulated && !!media.length &&
                 <div>
                   {
-                    media.slice(0).map((medium) => {
+                    getMediaSections(title, media, releases).map((medium) => {
                       return (
                         <AlbumDetailsMediumConnector
-                          key={medium.mediumNumber}
+                          key={medium.mediumKey}
                           albumId={id}
                           albumMonitored={monitored}
                           albumReleaseDate={releaseDate}
                           {...medium}
-                          isExpanded={expandedState[medium.mediumNumber]}
+                          isExpanded={expandedState[medium.mediumKey]}
                           onExpandPress={this.onExpandPress}
                         />
                       );
@@ -680,6 +705,7 @@ AlbumDetails.propTypes = {
   genres: PropTypes.arrayOf(PropTypes.string).isRequired,
   links: PropTypes.arrayOf(PropTypes.object).isRequired,
   media: PropTypes.arrayOf(PropTypes.object).isRequired,
+  releases: PropTypes.arrayOf(PropTypes.object),
   monitored: PropTypes.bool.isRequired,
   shortDateFormat: PropTypes.string.isRequired,
   isSaving: PropTypes.bool.isRequired,

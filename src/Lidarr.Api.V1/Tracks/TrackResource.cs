@@ -16,6 +16,9 @@ namespace Lidarr.Api.V1.Tracks
         public string ForeignRecordingId { get; set; }
         public int TrackFileId { get; set; }
         public int AlbumId { get; set; }
+
+        // Tomvis fork (MUSIC-68): which edition a track belongs to when an album monitors several
+        public int AlbumReleaseId { get; set; }
         public bool Explicit { get; set; }
         public int AbsoluteTrackNumber { get; set; }
         public string TrackNumber { get; set; }
@@ -53,6 +56,7 @@ namespace Lidarr.Api.V1.Tracks
                 ForeignRecordingId = model.ForeignRecordingId,
                 TrackFileId = model.TrackFileId,
                 AlbumId = model.AlbumId,
+                AlbumReleaseId = model.AlbumReleaseId,
                 Explicit = model.Explicit,
                 AbsoluteTrackNumber = model.AbsoluteTrackNumber,
                 TrackNumber = model.TrackNumber,
