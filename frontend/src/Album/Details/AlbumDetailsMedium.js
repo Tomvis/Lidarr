@@ -12,14 +12,19 @@ import translate from 'Utilities/String/translate';
 import TrackRowConnector from './TrackRowConnector';
 import styles from './AlbumDetailsMedium.css';
 
+// Tomvis fork (MUSIC-64): count only wanted tracks (or ones with a file), as the album statistics do
 function getMediumStatistics(tracks) {
-  const trackCount = tracks.length;
+  let trackCount = 0;
   let trackFileCount = 0;
   let totalTrackCount = 0;
 
   tracks.forEach((track) => {
     if (track.trackFileId) {
       trackFileCount++;
+    }
+
+    if (track.monitored || track.trackFileId) {
+      trackCount++;
     }
 
     totalTrackCount++;
@@ -168,6 +173,7 @@ class AlbumDetailsMedium extends Component {
                             return (
                               <TrackRowConnector
                                 key={item.id}
+                                albumMonitored={albumMonitored}
                                 columns={columns}
                                 {...item}
                               />

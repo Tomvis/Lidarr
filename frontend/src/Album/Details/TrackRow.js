@@ -4,6 +4,7 @@ import AlbumFormats from 'Album/AlbumFormats';
 import EpisodeStatusConnector from 'Album/EpisodeStatusConnector';
 import IndexerFlags from 'Album/IndexerFlags';
 import Icon from 'Components/Icon';
+import MonitorToggleButton from 'Components/MonitorToggleButton';
 import TableRowCell from 'Components/Table/Cells/TableRowCell';
 import TableRow from 'Components/Table/TableRow';
 import Popover from 'Components/Tooltip/Popover';
@@ -21,12 +22,27 @@ import styles from './TrackRow.css';
 class TrackRow extends Component {
 
   //
+  // Listeners
+
+  onMonitorTrackPress = (monitored) => {
+    const {
+      id,
+      albumId
+    } = this.props;
+
+    this.props.toggleTracksMonitored({ albumId, trackIds: [id], monitored });
+  };
+
+  //
   // Render
 
   render() {
     const {
       id,
       albumId,
+      albumMonitored,
+      monitored,
+      isSaving,
       mediumNumber,
       trackFileId,
       absoluteTrackNumber,
@@ -52,6 +68,22 @@ class TrackRow extends Component {
 
             if (!isVisible) {
               return null;
+            }
+
+            // Tomvis fork (MUSIC-64): a track is wanted only while its album is monitored
+            if (name === 'monitored') {
+              return (
+                <TableRowCell
+                  key={name}
+                  className={styles.monitored}
+                >
+                  <MonitorToggleButton
+                    monitored={albumMonitored && monitored}
+                    isSaving={isSaving}
+                    onPress={this.onMonitorTrackPress}
+                  />
+                </TableRowCell>
+              );
             }
 
             if (name === 'medium') {
@@ -218,8 +250,11 @@ class TrackRow extends Component {
 
 TrackRow.propTypes = {
   deleteTrackFile: PropTypes.func.isRequired,
+  toggleTracksMonitored: PropTypes.func.isRequired,
   id: PropTypes.number.isRequired,
   albumId: PropTypes.number.isRequired,
+  albumMonitored: PropTypes.bool.isRequired,
+  monitored: PropTypes.bool.isRequired,
   trackFileId: PropTypes.number,
   mediumNumber: PropTypes.number.isRequired,
   trackNumber: PropTypes.string.isRequired,
@@ -237,6 +272,7 @@ TrackRow.propTypes = {
 };
 
 TrackRow.defaultProps = {
+  isSaving: false,
   customFormats: [],
   indexerFlags: 0
 };

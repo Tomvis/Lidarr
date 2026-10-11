@@ -4,7 +4,9 @@ using System.Linq;
 using FluentAssertions;
 using Moq;
 using NUnit.Framework;
+using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.Music;
+using NzbDrone.Core.Music.Events;
 using NzbDrone.Core.Test.Framework;
 
 namespace NzbDrone.Core.Test.MusicTests
@@ -95,6 +97,26 @@ namespace NzbDrone.Core.Test.MusicTests
 
             _album.Monitored.Should().BeFalse();
             Wanted().Should().BeEquivalentTo(new[] { 1, 2, 3, 4 });
+        }
+
+        [Test]
+        public void a_change_should_publish_album_edited_so_stats_refresh()
+        {
+            _album.Monitored = true;
+
+            Subject.SetMonitored(new List<int> { 2 }, false);
+
+            Mocker.GetMock<IEventAggregator>().Verify(v => v.PublishEvent(It.Is<AlbumEditedEvent>(e => e.Album.Id == 7)), Times.Once());
+        }
+
+        [Test]
+        public void no_change_should_publish_nothing()
+        {
+            _album.Monitored = true;
+
+            Subject.SetMonitored(new List<int> { 2 }, true);
+
+            Mocker.GetMock<IEventAggregator>().Verify(v => v.PublishEvent(It.IsAny<AlbumEditedEvent>()), Times.Never());
         }
 
         [Test]

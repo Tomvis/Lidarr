@@ -1,6 +1,6 @@
 # Tomvis/Lidarr fork
 
-Branch `enhanced` = upstream `develop` tag + fork commits. forksync (.120) rebases it nightly; see homelab-stacks `forks.toml`.
+Branch `enhanced` = upstream `develop` tag + fork commits. The image (`docker/Dockerfile.tomvis`) overlays the fork's backend and UI on hotio's nightly. forksync (.120) rebases it nightly; see homelab-stacks `forks.toml`.
 
 ## Database migrations
 
@@ -18,7 +18,7 @@ Branch `enhanced` = upstream `develop` tag + fork commits. forksync (.120) rebas
 - Primary edition = monitored release titled like the album, no disambiguation, lowest id; it keeps the album folder. An extra edition's `{Album Title}` tokens become its edition title (`Ihsahn (orchestral version)`, else album title + disambiguation, else format + country), so the naming format must use an album-title token or editions share a folder.
 - Refresh keeps every monitored edition and never monitors new MB releases. An import replaces/upgrades only the edition identification picked (not pinned to the grab: a mislabeled grab must not import one edition as another). Removing an edition unlinks only its tracks.
 - Search: a result is matched to an edition by the words that set it apart from the album (`orchestral`, `instrumentals`); no such words = primary. Cutoff/upgrade checks use that edition's files; a result naming an unmonitored edition is rejected (`EditionSpecification`). A result titled as a monitored edition (`Ihsahn (Orchestral Version)`) matches an album search. Grabs and the queue check are per (album, edition), so one search can grab every missing edition. The Grab webhook's `albumRelease` is the matched edition.
-- Not done: UI multi-select (the image ships hotio's frontend, so use the API), plugin indexers passing an exact release id.
+- Not done: UI multi-select (use the API), plugin indexers passing an exact release id.
 
 ## Rescans keep download provenance (MUSIC-68)
 
@@ -36,4 +36,5 @@ Branch `enhanced` = upstream `develop` tag + fork commits. forksync (.120) rebas
 - Webhooks: tracks carry `mbId`, `recordingMbId`, `mediumNumber`, `absoluteTrackNumber`; `album.albumRelease.wantedTracks` lists the wanted tracks of a partial release (null when all are wanted).
 - Tidal plugin (Tomvis/Lidarr.Plugin.Tidal `1eb42be`, phase 2a): a grab for a partial album downloads only the wanted tracks (title+duration, else disc/track); an unmatched wanted track = whole album. Reads `Track.Monitored` by reflection (still builds on upstream). beets-lidarr imports a partial album with `missing_tracks` not counted.
 - qBittorrent (phase 2c): a grab for a partial album is added tagged `lidarr-wanted-tracks-<albumId>` with `stopCondition=MetadataReceived` (API 2.9+), so it stops once the file list is in. The next queue check sets priority 0 on every file but the wanted tracks' (`Download/WantedTrackFiles.cs`: title, else disc/track when the audio-file count equals the tracklist; no match for a wanted track = whole torrent), starts it per the client's initial state, then drops the tag.
-- slskd: Tubifarry fork (phase 2b). Not done yet: YouTube Music, UI.
+- slskd: Tubifarry fork (phase 2b). YouTube Music: Tubifarry fork (phase 2d).
+- UI (phase 3): a wanted toggle per track on the album page; medium counts show wanted tracks. A track flag change publishes `AlbumEditedEvent` (stats + SignalR push).

@@ -1,4 +1,4 @@
-# Tomvis/Lidarr image: hotio's nightly of the same version with this fork's backend overlaid.
+# Tomvis/Lidarr image: hotio's nightly of the same version with this fork's backend and UI overlaid.
 # Build from `git archive enhanced` on .120 (MUSIC-62). Keep LIDARRVERSION equal to the merged
 # upstream tag: plugins (Tidal, Tubifarry) bind to that assembly version.
 ARG LIDARRVERSION=3.1.6.5078
@@ -12,8 +12,18 @@ RUN LIDARRVERSION=$LIDARRVERSION BUILD_SOURCEBRANCHNAME=nightly NuGetAudit=false
     && cd _output/net8.0/linux-musl-x64/publish \
     && rm -f Lidarr.Windows.* ServiceInstall.* ServiceUninstall.*
 
+# Node as upstream CI (azure-pipelines nodeVersion 20.X)
+FROM node:20.18.1-alpine AS ui
+WORKDIR /src
+COPY package.json yarn.lock .yarnrc ./
+RUN yarn install --frozen-lockfile --network-timeout 120000
+COPY . .
+RUN yarn run build --env production
+
 FROM ghcr.io/hotio/lidarr:nightly-${LIDARRVERSION}
 ARG FORK_SHA=unknown
+RUN rm -rf /app/bin/UI
 COPY --from=build /src/_output/net8.0/linux-musl-x64/publish/ /app/bin/
+COPY --from=ui /src/_output/UI/ /app/bin/UI/
 RUN apk add --no-cache ffmpeg \
     && sed -i "s/^PackageVersion=.*/PackageVersion=tomvis-${FORK_SHA}/" /app/package_info

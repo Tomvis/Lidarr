@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NLog;
+using NzbDrone.Core.Messaging.Events;
+using NzbDrone.Core.Music.Events;
 
 namespace NzbDrone.Core.Music
 {
@@ -17,16 +19,19 @@ namespace NzbDrone.Core.Music
         private readonly ITrackService _trackService;
         private readonly IReleaseService _releaseService;
         private readonly IAlbumService _albumService;
+        private readonly IEventAggregator _eventAggregator;
         private readonly Logger _logger;
 
         public TrackMonitoringService(ITrackService trackService,
                                       IReleaseService releaseService,
                                       IAlbumService albumService,
+                                      IEventAggregator eventAggregator,
                                       Logger logger)
         {
             _trackService = trackService;
             _releaseService = releaseService;
             _albumService = albumService;
+            _eventAggregator = eventAggregator;
             _logger = logger;
         }
 
@@ -77,7 +82,16 @@ namespace NzbDrone.Core.Music
                     }
                 }
 
-                _trackService.UpdateMonitored(tracks.Where(t => t.Monitored != before[t.Id]).ToList());
+                var changed = tracks.Where(t => t.Monitored != before[t.Id]).ToList();
+
+                if (changed.Any())
+                {
+                    _trackService.UpdateMonitored(changed);
+
+                    // refreshes artist stats and pushes the album to the UI, now with its tracks' new flags
+                    var edited = _albumService.GetAlbum(album.Id);
+                    _eventAggregator.PublishEvent(new AlbumEditedEvent(edited, edited));
+                }
             }
         }
     }
