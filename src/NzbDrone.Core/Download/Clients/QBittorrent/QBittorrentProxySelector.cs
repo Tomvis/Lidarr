@@ -20,6 +20,13 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
         void AddTorrentFromUrl(string torrentUrl, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings);
         void AddTorrentFromFile(string fileName, byte[] fileContent, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings);
 
+        // Tomvis fork (MUSIC-64): add tagged, stopped once metadata (the file list) is in, so only wanted files download
+        void AddTorrentFromUrl(string torrentUrl, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings, string wantedTracksTag);
+        void AddTorrentFromFile(string fileName, byte[] fileContent, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings, string wantedTracksTag);
+        void SetFilePriority(string hash, List<int> fileIndexes, int priority, QBittorrentSettings settings);
+        void RemoveTag(string hash, string tag, QBittorrentSettings settings);
+        void StartTorrent(string hash, QBittorrentSettings settings);
+
         void RemoveTorrent(string hash, bool removeData, QBittorrentSettings settings);
         void SetTorrentLabel(string hash, string label, QBittorrentSettings settings);
         void AddLabel(string label, QBittorrentSettings settings);

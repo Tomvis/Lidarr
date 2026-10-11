@@ -35,4 +35,5 @@ Branch `enhanced` = upstream `develop` tag + fork commits. forksync (.120) rebas
 - Search: `AlbumSearchCriteria.Tracks` = wanted tracks without files when the album is partial (null otherwise) for indexer plugins.
 - Webhooks: tracks carry `mbId`, `recordingMbId`, `mediumNumber`, `absoluteTrackNumber`; `album.albumRelease.wantedTracks` lists the wanted tracks of a partial release (null when all are wanted).
 - Tidal plugin (Tomvis/Lidarr.Plugin.Tidal `1eb42be`, phase 2a): a grab for a partial album downloads only the wanted tracks (title+duration, else disc/track); an unmatched wanted track = whole album. Reads `Track.Monitored` by reflection (still builds on upstream). beets-lidarr imports a partial album with `missing_tracks` not counted.
-- Not done yet: slskd, YouTube Music, qBittorrent file priorities, UI.
+- qBittorrent (phase 2c): a grab for a partial album is added tagged `lidarr-wanted-tracks-<albumId>` with `stopCondition=MetadataReceived` (API 2.9+), so it stops once the file list is in. The next queue check sets priority 0 on every file but the wanted tracks' (`Download/WantedTrackFiles.cs`: title, else disc/track when the audio-file count equals the tracklist; no match for a wanted track = whole torrent), starts it per the client's initial state, then drops the tag.
+- slskd: Tubifarry fork (phase 2b). Not done yet: YouTube Music, UI.

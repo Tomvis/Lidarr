@@ -21,6 +21,8 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
         public string Label { get; set; } // Label of the torrent
         public string Category { get; set; } // Category of the torrent (3.3.5+)
 
+        public string Tags { get; set; } // Comma-concatenated tag list of the torrent
+
         [JsonProperty(PropertyName = "save_path")]
         public string SavePath { get; set; } // Torrent save path
 
@@ -58,6 +60,12 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
 
     public class QBittorrentTorrentFile
     {
+        public int Index { get; set; } // File index (2.8.2+)
+
         public string Name { get; set; }
+
+        public long Size { get; set; }
+
+        public int Priority { get; set; } // 0 = do not download
     }
 }

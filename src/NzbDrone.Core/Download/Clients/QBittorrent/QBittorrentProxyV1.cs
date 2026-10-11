@@ -192,6 +192,35 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
             }
         }
 
+        // Tomvis fork (MUSIC-64): wanted-track selection needs API v2.9+, so v1 adds the whole torrent
+        public void AddTorrentFromUrl(string torrentUrl, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings, string wantedTracksTag)
+        {
+            AddTorrentFromUrl(torrentUrl, seedConfiguration, settings);
+        }
+
+        public void AddTorrentFromFile(string fileName, byte[] fileContent, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings, string wantedTracksTag)
+        {
+            AddTorrentFromFile(fileName, fileContent, seedConfiguration, settings);
+        }
+
+        public void SetFilePriority(string hash, List<int> fileIndexes, int priority, QBittorrentSettings settings)
+        {
+            throw new NotSupportedException("File priorities need qBittorrent API v2.9+");
+        }
+
+        public void RemoveTag(string hash, string tag, QBittorrentSettings settings)
+        {
+            throw new NotSupportedException("Tags need qBittorrent API v2.9+");
+        }
+
+        public void StartTorrent(string hash, QBittorrentSettings settings)
+        {
+            var request = BuildRequest(settings).Resource("/command/resume")
+                                                .Post()
+                                                .AddFormParameter("hash", hash);
+            ProcessRequest(request, settings);
+        }
+
         public void RemoveTorrent(string hash, bool removeData, QBittorrentSettings settings)
         {
             var request = BuildRequest(settings).Resource(removeData ? "/command/deletePerm" : "/command/delete")

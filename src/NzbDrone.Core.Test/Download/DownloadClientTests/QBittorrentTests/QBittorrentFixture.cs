@@ -13,6 +13,8 @@ using NzbDrone.Core.Download.Clients;
 using NzbDrone.Core.Download.Clients.QBittorrent;
 using NzbDrone.Core.Exceptions;
 using NzbDrone.Core.MediaFiles.TorrentInfo;
+using NzbDrone.Core.Music;
+using NzbDrone.Core.Parser.Model;
 using NzbDrone.Test.Common;
 
 namespace NzbDrone.Core.Test.Download.DownloadClientTests.QBittorrentTests
@@ -989,6 +991,139 @@ namespace NzbDrone.Core.Test.Download.DownloadClientTests.QBittorrentTests
 
             Mocker.GetMock<IQBittorrentProxySelector>()
                   .Verify(v => v.GetProxy(It.IsAny<QBittorrentSettings>(), true), Times.Once());
+        }
+
+        // Tomvis fork (MUSIC-64): partial albums download only the wanted files
+        private RemoteAlbum GivenPartialAlbum()
+        {
+            Mocker.GetMock<IQBittorrentProxySelector>()
+                  .Setup(s => s.GetApiVersion(It.IsAny<QBittorrentSettings>(), It.IsAny<bool>()))
+                  .Returns(new Version(2, 11, 4));
+
+            Mocker.GetMock<ITrackService>()
+                  .Setup(s => s.GetTracksByAlbum(7))
+                  .Returns(new List<Track>
+                  {
+                      new Track { Title = "72 Seasons", MediumNumber = 1, AbsoluteTrackNumber = 1, AlbumReleaseId = 3, Monitored = false },
+                      new Track { Title = "Shadows Follow", MediumNumber = 1, AbsoluteTrackNumber = 2, AlbumReleaseId = 3, Monitored = true },
+                      new Track { Title = "Lux Æterna", MediumNumber = 1, AbsoluteTrackNumber = 6, AlbumReleaseId = 3, Monitored = false }
+                  });
+
+            var remoteAlbum = CreateRemoteAlbum();
+            remoteAlbum.Albums.Add(new Album { Id = 7 });
+
+            return remoteAlbum;
+        }
+
+        private QBittorrentTorrent GivenTaggedTorrent(string state)
+        {
+            var torrent = new QBittorrentTorrent
+            {
+                Hash = "HASH",
+                Name = _title,
+                Size = 1000,
+                Progress = 0,
+                Eta = 8640000,
+                State = state,
+                Tags = "other, lidarr-wanted-tracks-7",
+                SavePath = ""
+            };
+            GivenTorrents(new List<QBittorrentTorrent> { torrent });
+            GivenTorrentFiles("HASH", new List<QBittorrentTorrentFile>
+            {
+                new QBittorrentTorrentFile { Index = 0, Name = "Metallica - 72 Seasons/01 - 72 Seasons.flac" },
+                new QBittorrentTorrentFile { Index = 1, Name = "Metallica - 72 Seasons/02 - Shadows Follow.flac" },
+                new QBittorrentTorrentFile { Index = 2, Name = "Metallica - 72 Seasons/06 - Lux Æterna.flac" },
+                new QBittorrentTorrentFile { Index = 3, Name = "Metallica - 72 Seasons/cover.jpg" }
+            });
+
+            return torrent;
+        }
+
+        [Test]
+        public async Task Download_partial_album_adds_tagged_and_stopping_at_metadata()
+        {
+            var remoteAlbum = GivenPartialAlbum();
+
+            await Subject.Download(remoteAlbum, CreateIndexer());
+
+            Mocker.GetMock<IQBittorrentProxy>()
+                  .Verify(v => v.AddTorrentFromFile(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<TorrentSeedConfiguration>(), It.IsAny<QBittorrentSettings>(), "lidarr-wanted-tracks-7"), Times.Once());
+            Mocker.GetMock<IQBittorrentProxy>()
+                  .Verify(v => v.AddTorrentFromFile(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<TorrentSeedConfiguration>(), It.IsAny<QBittorrentSettings>()), Times.Never());
+        }
+
+        [Test]
+        public async Task Download_whole_album_adds_untagged()
+        {
+            GivenSuccessfulDownload();
+            var remoteAlbum = GivenPartialAlbum();
+            Mocker.GetMock<ITrackService>()
+                  .Setup(s => s.GetTracksByAlbum(7))
+                  .Returns(new List<Track> { new Track { Title = "A", AlbumReleaseId = 3, Monitored = true } });
+
+            await Subject.Download(remoteAlbum, CreateIndexer());
+
+            Mocker.GetMock<IQBittorrentProxy>()
+                  .Verify(v => v.AddTorrentFromFile(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<TorrentSeedConfiguration>(), It.IsAny<QBittorrentSettings>()), Times.Once());
+        }
+
+        [Test]
+        public void GetItems_skips_unwanted_files_then_starts()
+        {
+            GivenPartialAlbum();
+            GivenTaggedTorrent("stoppedDL");
+
+            Subject.GetItems().Should().HaveCount(1);
+
+            var proxy = Mocker.GetMock<IQBittorrentProxy>();
+            proxy.Verify(v => v.SetFilePriority("hash", It.Is<List<int>>(l => l.SequenceEqual(new[] { 0, 2, 3 })), 0, It.IsAny<QBittorrentSettings>()), Times.Once());
+            proxy.Verify(v => v.RemoveTag("hash", "lidarr-wanted-tracks-7", It.IsAny<QBittorrentSettings>()), Times.Once());
+            proxy.Verify(v => v.StartTorrent("hash", It.IsAny<QBittorrentSettings>()), Times.Once());
+        }
+
+        [Test]
+        public void GetItems_downloads_everything_when_a_wanted_track_has_no_file()
+        {
+            GivenPartialAlbum();
+            GivenTaggedTorrent("stoppedDL");
+            GivenTorrentFiles("HASH", new List<QBittorrentTorrentFile>
+            {
+                new QBittorrentTorrentFile { Index = 0, Name = "Metallica - 72 Seasons/01 - 72 Seasons.flac" }
+            });
+
+            Subject.GetItems();
+
+            var proxy = Mocker.GetMock<IQBittorrentProxy>();
+            proxy.Verify(v => v.SetFilePriority(It.IsAny<string>(), It.IsAny<List<int>>(), It.IsAny<int>(), It.IsAny<QBittorrentSettings>()), Times.Never());
+            proxy.Verify(v => v.RemoveTag("hash", "lidarr-wanted-tracks-7", It.IsAny<QBittorrentSettings>()), Times.Once());
+            proxy.Verify(v => v.StartTorrent("hash", It.IsAny<QBittorrentSettings>()), Times.Once());
+        }
+
+        [Test]
+        public void GetItems_keeps_initial_state_stop_after_selection()
+        {
+            Subject.Definition.Settings.As<QBittorrentSettings>().InitialState = (int)QBittorrentState.Stop;
+            GivenPartialAlbum();
+            GivenTaggedTorrent("stoppedDL");
+
+            Subject.GetItems();
+
+            var proxy = Mocker.GetMock<IQBittorrentProxy>();
+            proxy.Verify(v => v.SetFilePriority("hash", It.IsAny<List<int>>(), 0, It.IsAny<QBittorrentSettings>()), Times.Once());
+            proxy.Verify(v => v.StartTorrent(It.IsAny<string>(), It.IsAny<QBittorrentSettings>()), Times.Never());
+        }
+
+        [Test]
+        public void GetItems_waits_for_metadata()
+        {
+            GivenPartialAlbum();
+            GivenTaggedTorrent("metaDL");
+
+            Subject.GetItems();
+
+            Mocker.GetMock<IQBittorrentProxy>()
+                  .Verify(v => v.GetTorrentFiles(It.IsAny<string>(), It.IsAny<QBittorrentSettings>()), Times.Never());
         }
     }
 }

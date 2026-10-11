@@ -144,11 +144,16 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
 
         public void AddTorrentFromUrl(string torrentUrl, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings)
         {
+            AddTorrentFromUrl(torrentUrl, seedConfiguration, settings, null);
+        }
+
+        public void AddTorrentFromUrl(string torrentUrl, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings, string wantedTracksTag)
+        {
             var request = BuildRequest(settings).Resource("/api/v2/torrents/add")
                                                 .Post()
                                                 .AddFormParameter("urls", torrentUrl);
 
-            AddTorrentDownloadFormParameters(request, settings);
+            AddTorrentDownloadFormParameters(request, settings, wantedTracksTag);
 
             if (seedConfiguration != null)
             {
@@ -166,11 +171,16 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
 
         public void AddTorrentFromFile(string fileName, byte[] fileContent, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings)
         {
+            AddTorrentFromFile(fileName, fileContent, seedConfiguration, settings, null);
+        }
+
+        public void AddTorrentFromFile(string fileName, byte[] fileContent, TorrentSeedConfiguration seedConfiguration, QBittorrentSettings settings, string wantedTracksTag)
+        {
             var request = BuildRequest(settings).Resource("/api/v2/torrents/add")
                                                 .Post()
                                                 .AddFormUpload("torrents", fileName, fileContent);
 
-            AddTorrentDownloadFormParameters(request, settings);
+            AddTorrentDownloadFormParameters(request, settings, wantedTracksTag);
 
             if (seedConfiguration != null)
             {
@@ -239,15 +249,23 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
             }
         }
 
-        private void AddTorrentDownloadFormParameters(HttpRequestBuilder request, QBittorrentSettings settings)
+        private void AddTorrentDownloadFormParameters(HttpRequestBuilder request, QBittorrentSettings settings, string wantedTracksTag = null)
         {
             if (settings.MusicCategory.IsNotNullOrWhiteSpace())
             {
                 request.AddFormParameter("category", settings.MusicCategory);
             }
 
+            // Tomvis fork (MUSIC-64): runs until metadata is in, then stops for file selection; initial state applies after
+            if (wantedTracksTag.IsNotNullOrWhiteSpace())
+            {
+                request.AddFormParameter("tags", wantedTracksTag);
+                request.AddFormParameter("stopCondition", "MetadataReceived");
+                request.AddFormParameter(GetApiVersion(settings) >= new Version(2, 11, 0) ? "stopped" : "paused", false);
+            }
+
             // Avoid extraneous API version check if initial state is ForceStart
-            if ((QBittorrentState)settings.InitialState is QBittorrentState.Start or QBittorrentState.Stop)
+            else if ((QBittorrentState)settings.InitialState is QBittorrentState.Start or QBittorrentState.Stop)
             {
                 var stoppedParameterName = GetApiVersion(settings) >= new Version(2, 11, 0) ? "stopped" : "paused";
 
@@ -334,6 +352,39 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
                                                 .Post()
                                                 .AddFormParameter("hashes", hash)
                                                 .AddFormParameter("value", enabled ? "true" : "false");
+            ProcessRequest(request, settings);
+        }
+
+        public void SetFilePriority(string hash, List<int> fileIndexes, int priority, QBittorrentSettings settings)
+        {
+            var request = BuildRequest(settings).Resource("/api/v2/torrents/filePrio")
+                                                .Post()
+                                                .AddFormParameter("hash", hash)
+                                                .AddFormParameter("id", string.Join("|", fileIndexes))
+                                                .AddFormParameter("priority", priority);
+            ProcessRequest(request, settings);
+        }
+
+        public void RemoveTag(string hash, string tag, QBittorrentSettings settings)
+        {
+            var request = BuildRequest(settings).Resource("/api/v2/torrents/removeTags")
+                                                .Post()
+                                                .AddFormParameter("hashes", hash)
+                                                .AddFormParameter("tags", tag);
+            ProcessRequest(request, settings);
+
+            // The tag names one album and is used once
+            request = BuildRequest(settings).Resource("/api/v2/torrents/deleteTags")
+                                            .Post()
+                                            .AddFormParameter("tags", tag);
+            ProcessRequest(request, settings);
+        }
+
+        public void StartTorrent(string hash, QBittorrentSettings settings)
+        {
+            var request = BuildRequest(settings).Resource(GetApiVersion(settings) >= new Version(2, 11, 0) ? "/api/v2/torrents/start" : "/api/v2/torrents/resume")
+                                                .Post()
+                                                .AddFormParameter("hashes", hash);
             ProcessRequest(request, settings);
         }
 

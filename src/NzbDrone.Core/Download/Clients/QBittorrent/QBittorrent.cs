@@ -12,6 +12,7 @@ using NzbDrone.Core.Blocklisting;
 using NzbDrone.Core.Configuration;
 using NzbDrone.Core.Localization;
 using NzbDrone.Core.MediaFiles.TorrentInfo;
+using NzbDrone.Core.Music;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.RemotePathMappings;
 using NzbDrone.Core.Validation;
@@ -20,8 +21,12 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
 {
     public class QBittorrent : TorrentClientBase<QBittorrentSettings>
     {
+        // Tomvis fork (MUSIC-64): marks a torrent of a partial album that waits for its file selection
+        private const string WantedTracksTagPrefix = "lidarr-wanted-tracks-";
+
         private readonly IQBittorrentProxySelector _proxySelector;
         private readonly ICached<SeedingTimeCacheEntry> _seedingTimeCache;
+        private readonly ITrackService _trackService;
 
         private class SeedingTimeCacheEntry
         {
@@ -38,10 +43,12 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
                            ICacheManager cacheManager,
                            ILocalizationService localizationService,
                            IBlocklistService blocklistService,
+                           ITrackService trackService,
                            Logger logger)
             : base(torrentFileInfoReader, httpClient, configService, diskProvider, remotePathMappingService, localizationService, blocklistService, logger)
         {
             _proxySelector = proxySelector;
+            _trackService = trackService;
 
             _seedingTimeCache = cacheManager.GetCache<SeedingTimeCacheEntry>(GetType(), "seedingTime");
         }
@@ -79,9 +86,17 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
             var addHasSetShareLimits = setShareLimits && ProxyApiVersion >= new Version(2, 8, 1);
             var isRecentAlbum = remoteAlbum.IsRecentAlbum();
             var moveToTop = (isRecentAlbum && Settings.RecentMusicPriority == (int)QBittorrentPriority.First) || (!isRecentAlbum && Settings.OlderMusicPriority == (int)QBittorrentPriority.First);
-            var forceStart = (QBittorrentState)Settings.InitialState == QBittorrentState.ForceStart;
+            var wantedTracksTag = GetWantedTracksTag(remoteAlbum);
+            var forceStart = (QBittorrentState)Settings.InitialState == QBittorrentState.ForceStart && wantedTracksTag == null;
 
-            Proxy.AddTorrentFromUrl(magnetLink, addHasSetShareLimits && setShareLimits ? remoteAlbum.SeedConfiguration : null, Settings);
+            if (wantedTracksTag == null)
+            {
+                Proxy.AddTorrentFromUrl(magnetLink, addHasSetShareLimits && setShareLimits ? remoteAlbum.SeedConfiguration : null, Settings);
+            }
+            else
+            {
+                Proxy.AddTorrentFromUrl(magnetLink, addHasSetShareLimits && setShareLimits ? remoteAlbum.SeedConfiguration : null, Settings, wantedTracksTag);
+            }
 
             if ((!addHasSetShareLimits && setShareLimits) || moveToTop || forceStart)
             {
@@ -136,9 +151,17 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
             var addHasSetShareLimits = setShareLimits && ProxyApiVersion >= new Version(2, 8, 1);
             var isRecentAlbum = remoteAlbum.IsRecentAlbum();
             var moveToTop = (isRecentAlbum && Settings.RecentMusicPriority == (int)QBittorrentPriority.First) || (!isRecentAlbum && Settings.OlderMusicPriority == (int)QBittorrentPriority.First);
-            var forceStart = (QBittorrentState)Settings.InitialState == QBittorrentState.ForceStart;
+            var wantedTracksTag = GetWantedTracksTag(remoteAlbum);
+            var forceStart = (QBittorrentState)Settings.InitialState == QBittorrentState.ForceStart && wantedTracksTag == null;
 
-            Proxy.AddTorrentFromFile(filename, fileContent, addHasSetShareLimits ? remoteAlbum.SeedConfiguration : null, Settings);
+            if (wantedTracksTag == null)
+            {
+                Proxy.AddTorrentFromFile(filename, fileContent, addHasSetShareLimits ? remoteAlbum.SeedConfiguration : null, Settings);
+            }
+            else
+            {
+                Proxy.AddTorrentFromFile(filename, fileContent, addHasSetShareLimits ? remoteAlbum.SeedConfiguration : null, Settings, wantedTracksTag);
+            }
 
             if ((!addHasSetShareLimits && setShareLimits) || moveToTop || forceStart)
             {
@@ -187,6 +210,74 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
             return hash;
         }
 
+        // A torrent for an album that wants only some tracks: tag it and let qBittorrent stop it once the file list is in
+        private string GetWantedTracksTag(RemoteAlbum remoteAlbum)
+        {
+            if (remoteAlbum.Albums is not { Count: 1 } || ProxyApiVersion < new Version(2, 9, 0))
+            {
+                return null;
+            }
+
+            var albumId = remoteAlbum.Albums[0].Id;
+
+            return _trackService.GetTracksByAlbum(albumId).Any(t => !t.Monitored) ? WantedTracksTagPrefix + albumId : null;
+        }
+
+        // Skip the files of unwanted tracks, then start the torrent as the initial state says
+        private void SelectWantedTrackFiles(QBittorrentTorrent torrent)
+        {
+            var tag = torrent.Tags?.Split(',').Select(t => t.Trim()).FirstOrDefault(t => t.StartsWith(WantedTracksTagPrefix));
+
+            if (tag == null || torrent.State is not ("stoppedDL" or "pausedDL"))
+            {
+                return;
+            }
+
+            var hash = torrent.Hash.ToLower();
+
+            try
+            {
+                var files = Proxy.GetTorrentFiles(hash, Settings);
+                var albumId = int.Parse(tag.Substring(WantedTracksTagPrefix.Length));
+                var wanted = WantedTrackFiles.Select(files.Select(f => (f.Index, f.Name)).ToList(), _trackService.GetTracksByAlbum(albumId));
+
+                if (wanted == null)
+                {
+                    _logger.Info("{0}: downloading all {1} files (wanted tracks not all matched, or none unwanted)", torrent.Name, files.Count);
+                }
+                else
+                {
+                    var skipped = files.Where(f => !wanted.Contains(f.Index)).Select(f => f.Index).ToList();
+
+                    if (skipped.Any())
+                    {
+                        Proxy.SetFilePriority(hash, skipped, 0, Settings);
+                    }
+
+                    _logger.Info("{0}: downloading {1} wanted of {2} files", torrent.Name, wanted.Count, files.Count);
+                }
+
+                switch ((QBittorrentState)Settings.InitialState)
+                {
+                    case QBittorrentState.Stop:
+                        break;
+                    case QBittorrentState.ForceStart:
+                        Proxy.SetForceStart(hash, true, Settings);
+                        break;
+                    default:
+                        Proxy.StartTorrent(hash, Settings);
+                        break;
+                }
+
+                // Last, so a failed step above is retried on the next check
+                Proxy.RemoveTag(hash, tag, Settings);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex, "Failed to select the wanted track files of {0}, retrying on the next check", torrent.Name);
+            }
+        }
+
         protected bool WaitForTorrent(string hash)
         {
             var count = 10;
@@ -220,6 +311,11 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
             var version = Proxy.GetApiVersion(Settings);
             var config = Proxy.GetConfig(Settings);
             var torrents = Proxy.GetTorrents(Settings);
+
+            foreach (var torrent in torrents)
+            {
+                SelectWantedTrackFiles(torrent);
+            }
 
             var queueItems = new List<DownloadClientItem>();
 
