@@ -168,8 +168,10 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Identification
                 Logger.Trace("album_disambiguation: {0} vs {1}; {2}", disambig, release.Disambiguation, dist.NormalizedDistance());
             }
 
+            // Tomvis fork (MUSIC-64): a partial album imports only into its monitored release, whatever release the
+            // file was tagged with
             var mbAlbumId = localTracks.MostCommon(x => x.FileTrackInfo.ReleaseMBId);
-            if (mbAlbumId.IsNotNullOrWhiteSpace())
+            if (mbAlbumId.IsNotNullOrWhiteSpace() && !(release.Monitored && WantedTracks.IsPartial(release)))
             {
                 dist.AddBool("album_id", mbAlbumId != release.ForeignReleaseId && !release.OldForeignReleaseIds.Contains(mbAlbumId));
                 Logger.Trace("album_id: {0} vs {1} or {2}; {3}", mbAlbumId, release.ForeignReleaseId, string.Join(", ", release.OldForeignReleaseIds), dist.NormalizedDistance());

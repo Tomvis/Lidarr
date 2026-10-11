@@ -135,6 +135,31 @@ namespace NzbDrone.Core.Test.MediaFiles.TrackImport.Identification
             DistanceCalculator.AlbumReleaseDistance(localTracks, release, mapping).NormalizedDistance().Should().Be(0.0);
         }
 
+        // Tomvis fork (MUSIC-64): a partial album's file may carry another release's id
+        [TestCase(true)]
+        [TestCase(false)]
+        public void test_tag_of_another_release(bool partial)
+        {
+            var tracks = GivenTracks(3);
+            tracks.ForEach(t => t.Monitored = !partial || t == tracks[0]);
+            var release = GivenAlbumRelease("album", tracks);
+            release.Monitored = true;
+            var localTracks = GivenLocalTracks(tracks.Take(partial ? 1 : 3).ToList(), release);
+            localTracks.ForEach(t => t.FileTrackInfo.ReleaseMBId = "another-release");
+            var mapping = GivenMapping(localTracks, tracks);
+
+            var distance = DistanceCalculator.AlbumReleaseDistance(localTracks, release, mapping).NormalizedDistance();
+
+            if (partial)
+            {
+                distance.Should().Be(0.0);
+            }
+            else
+            {
+                distance.Should().BeGreaterThan(0.0);
+            }
+        }
+
         [Test]
         public void test_incomplete_album()
         {

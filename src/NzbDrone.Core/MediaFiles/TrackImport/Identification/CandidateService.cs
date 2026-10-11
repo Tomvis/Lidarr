@@ -59,6 +59,14 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Identification
                 _logger.Debug("Selecting release from consensus ForeignReleaseId [{0}]", releaseIds[0]);
                 tagMbidRelease = _releaseService.GetReleaseByForeignReleaseId(releaseIds[0], true);
 
+                // Tomvis fork (MUSIC-64): a partial album imports only into its monitored release, so a file tagged
+                // with another release of it is matched against the album instead
+                if (tagMbidRelease != null && IsOtherReleaseOfPartialAlbum(tagMbidRelease))
+                {
+                    _logger.Debug("Tagged release {0} isn't the monitored release of a partial album, ignoring the tag", tagMbidRelease);
+                    tagMbidRelease = null;
+                }
+
                 if (tagMbidRelease != null)
                 {
                     tagCandidate = GetDbCandidatesByRelease(new List<AlbumRelease> { tagMbidRelease }, includeExisting);
@@ -113,6 +121,11 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Identification
 
             // if we haven't got any candidates then try fingerprinting
             return candidateReleases;
+        }
+
+        private bool IsOtherReleaseOfPartialAlbum(AlbumRelease release)
+        {
+            return !release.Monitored && (_releaseService.GetReleasesByAlbum(release.AlbumId)?.Any(r => r.Monitored && WantedTracks.IsPartial(r)) ?? false);
         }
 
         private List<CandidateAlbumRelease> GetDbCandidatesByRelease(List<AlbumRelease> releases, bool includeExisting)

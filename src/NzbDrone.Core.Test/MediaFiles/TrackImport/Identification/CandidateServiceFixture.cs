@@ -157,5 +157,34 @@ namespace NzbDrone.Core.Test.MediaFiles.TrackImport.Identification
             Subject.GetDbCandidatesFromTags(localAlbumRelease, null, false).Should().BeEquivalentTo(
                 new List<CandidateAlbumRelease> { new CandidateAlbumRelease(release) });
         }
+
+        // Tomvis fork (MUSIC-64)
+        [TestCase(true, 2)]
+        [TestCase(false, 1)]
+        public void get_candidates_should_ignore_tag_of_another_release_of_a_partial_album(bool partial, int expected)
+        {
+            var wantedTracks = GivenTracks(3);
+            wantedTracks.ForEach(t => t.Monitored = !partial || t == wantedTracks[0]);
+            var monitored = GivenAlbumRelease("album", wantedTracks);
+            monitored.Monitored = true;
+
+            var tagged = GivenAlbumRelease("album", GivenTracks(3));
+            tagged.ForeignReleaseId = "xxx";
+            tagged.Monitored = false;
+            tagged.AlbumId = monitored.AlbumId;
+
+            var localAlbumRelease = new LocalAlbumRelease(GivenLocalTracks(tagged.Tracks.Value.Take(1).ToList(), tagged));
+            var idOverrides = new IdentificationOverrides { Album = monitored.Album.Value };
+            idOverrides.Album.Id = monitored.AlbumId;
+
+            Mocker.GetMock<IReleaseService>()
+                  .Setup(x => x.GetReleaseByForeignReleaseId("xxx", true))
+                  .Returns(tagged);
+            Mocker.GetMock<IReleaseService>()
+                  .Setup(x => x.GetReleasesByAlbum(monitored.AlbumId))
+                  .Returns(new List<AlbumRelease> { monitored, tagged });
+
+            Subject.GetDbCandidatesFromTags(localAlbumRelease, idOverrides, false).Should().HaveCount(expected);
+        }
     }
 }
