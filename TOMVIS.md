@@ -34,4 +34,5 @@ Branch `enhanced` = upstream `develop` tag + fork commits. forksync (.120) rebas
 - Refresh keeps the flag: merges keep it, MusicBrainz-added tracks of a partial release start unwanted, and a monitored-release switch carries wanted recordings over (`TrackService.CarryOverMonitoring`).
 - Search: `AlbumSearchCriteria.Tracks` = wanted tracks without files when the album is partial (null otherwise) for indexer plugins.
 - Webhooks: tracks carry `mbId`, `recordingMbId`, `mediumNumber`, `absoluteTrackNumber`; `album.albumRelease.wantedTracks` lists the wanted tracks of a partial release (null when all are wanted).
-- Not done yet: per-source single-track search/download (Tidal plugin, slskd, YouTube Music, qBittorrent file priorities), wanted-track list in Grabbed history for download clients, UI.
+- Tidal plugin (Tomvis/Lidarr.Plugin.Tidal `1eb42be`, phase 2a): a grab for a partial album downloads only the wanted tracks (title+duration, else disc/track); an unmatched wanted track = whole album. Reads `Track.Monitored` by reflection (still builds on upstream). beets-lidarr imports a partial album with `missing_tracks` not counted.
+- Not done yet: slskd, YouTube Music, qBittorrent file priorities, UI.
