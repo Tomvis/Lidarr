@@ -8,7 +8,9 @@
 }
 
 .label {
-  @add-mixin truncate;
+  composes: label from '~Components/Label.css';
 
+  overflow: hidden;
   max-width: 100%;
+  text-overflow: ellipsis;
 }
