@@ -23,6 +23,14 @@ Branch `enhanced` = upstream `develop` tag + fork commits. The image (`docker/Do
 - Album page: with several monitored editions, one track section per edition medium, headed by the edition title (`track.albumReleaseId` in the API). Upstream grouped by medium number only, so editions' medium 1 merged.
 - Plugin indexers: Tubifarry (Soulseek) fits a folder to each monitored edition (file count, then closest durations) and adds an extra edition's title to the result title, since a matched folder is otherwise titled after the album (MUSIC-68). Tidal needs nothing: its titles carry Tidal's version ("Ihsahn (Orchestral Version)").
 
+## Held editions (MUSIC-102)
+
+- `AlbumRelease.Held` (migration 1001): a monitored extra edition that is only a candidate (a bestedition DR target). Set via `PUT /api/v1/album` (`releases[].held`); in the API and in webhooks' `albumRelease.held`. `AlbumEditions.IsHeld` = held, monitored and not the primary; the edition-judge plugin (MUSIC-95) keeps its imports waiting for a verdict. **Don't set it before that plugin is live**: Lidarr would import the grab, and identification may pick the owned edition.
+- A held edition is never the primary (folder, default match), and its edition title names its year (`Elvis Presley (1999 CD United States)`).
+- Search: a held edition is usually the album's title from another mastering, so the words matcher can't see it. It is also matched by release data: year, a later mastering (`remaster`/`reissue`, when its year is after the album's), label, country (`Japan`/`japanese`/`jp`, `usa`, `uk`; bare `US` is too common a word), format (`vinyl`/`lp`, `web`, `cd`, `sacd`). Only clues no other monitored edition shares count; the held edition wins if the title names more of its clues than any other monitored edition's and than the words of a release it otherwise names. A tie or nothing = the primary, as without held editions. Held editions show as missing, so Wanted/Missing, RSS and decluttarr search them.
+- Not in core: catalog numbers (Lidarr doesn't store them), DR, the verdict. Tubifarry (slskd) still fits folders by durations, so same-title held editions mostly land on the primary there.
+- `PUT /api/v1/album` now sets only `monitored`/`held` on existing releases. Upstream wrote the resource's releases whole, and the resource has no `ReleaseDate` or `OldForeignReleaseIds`, so every album edit nulled them (every multi-edition album in prod had no release dates); an album refresh refills them.
+
 ## Rescans keep download provenance (MUSIC-68)
 
 - A rescan that reuses a TrackFile row (MUSIC-66) keeps its `SceneName`, `OriginalFilePath`, and its `ReleaseGroup`/`IndexerFlags` when the rescan finds none. Upstream rebuilt the row from disk alone, so every beets retag wiped the release name; custom formats then scored the bare filename and searches approved CF-only "upgrades" of the same release.
