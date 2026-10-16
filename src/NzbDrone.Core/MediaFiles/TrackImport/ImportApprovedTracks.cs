@@ -135,9 +135,11 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
 
                 // Tomvis fork (MUSIC-64): an album that wants only some tracks keeps its other files;
                 // each imported track replaces only its own file (UpgradeTrackFile)
+                // Tomvis fork (MUSIC-96): every other album recycles only the files the new release can't hold,
+                // so a grab missing some tracks no longer loses them
                 if (replaceExisting && !WantedTracks.IsPartial(newRelease))
                 {
-                    RemoveExistingTrackFiles(artist, album, _mediaFileService.GetFilesByAlbum(album.Id));
+                    RemoveExistingTrackFiles(artist, album, FilesTheReleaseCannotHold(album, newRelease, decisionList));
                 }
 
                 // set the correct release to be monitored before importing the new files
@@ -523,6 +525,62 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
             {
                 decision.Reject(new Rejection("Failed to add missing album", RejectionType.Temporary));
             }
+        }
+
+        // Tomvis fork (MUSIC-96): a file on a track of the imported release stays (UpgradeTrackFile replaces it if the
+        // import brings that track). After a release switch, a file whose recording the new release has but the import
+        // doesn't bring moves to that track. The rest (recordings the import brings, the new release lacks, or no track
+        // at all) are recycled as upstream did.
+        private List<TrackFile> FilesTheReleaseCannotHold(Album album, AlbumRelease newRelease, List<ImportDecision<LocalTrack>> decisions)
+        {
+            var files = _mediaFileService.GetFilesByAlbum(album.Id);
+
+            if (!files.Any())
+            {
+                return files;
+            }
+
+            var importedTrackIds = decisions.SelectMany(d => d.Item.Tracks).Select(t => t.Id).ToHashSet();
+            var freeTracks = (_trackService.GetTracksByRelease(newRelease.Id) ?? new List<Track>())
+                .Where(t => !t.HasFile && !importedTrackIds.Contains(t.Id))
+                .ToList();
+            var tracksByFile = (_trackService.GetTracksByFileId(files.Select(f => f.Id)) ?? new List<Track>())
+                .ToLookup(t => t.TrackFileId);
+
+            var relinked = new List<Track>();
+            var recycle = new List<TrackFile>();
+
+            foreach (var file in files)
+            {
+                var fileTracks = tracksByFile[file.Id].ToList();
+
+                if (fileTracks.Any(t => t.AlbumReleaseId == newRelease.Id))
+                {
+                    continue;
+                }
+
+                var recordings = fileTracks.Select(t => t.ForeignRecordingId).ToHashSet();
+                var targets = freeTracks.Where(t => recordings.Contains(t.ForeignRecordingId)).ToList();
+
+                if (!targets.Any())
+                {
+                    recycle.Add(file);
+                    continue;
+                }
+
+                _logger.Debug("Moving {0} to {1} track(s) of {2}", file, targets.Count, newRelease);
+                fileTracks.ForEach(t => t.TrackFileId = 0);
+                targets.ForEach(t => t.TrackFileId = file.Id);
+                freeTracks.RemoveAll(targets.Contains);
+                relinked.AddRange(fileTracks.Concat(targets));
+            }
+
+            if (relinked.Any())
+            {
+                _trackService.SetFileIds(relinked);
+            }
+
+            return recycle;
         }
 
         private void RemoveExistingTrackFiles(Artist artist, Album album, List<TrackFile> previousFiles)

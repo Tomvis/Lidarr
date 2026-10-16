@@ -365,11 +365,25 @@ namespace NzbDrone.Core.Test.MediaFiles
             return extra;
         }
 
-        private void GivenExistingFiles(TrackFile editionFile, TrackFile otherEditionFile)
+        private void GivenFileTracks(params Track[] tracks)
+        {
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByFileId(It.IsAny<IEnumerable<int>>()))
+                .Returns(tracks.ToList());
+        }
+
+        private void GivenReleaseTracks(int releaseId, params Track[] tracks)
+        {
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(releaseId))
+                .Returns(tracks.ToList());
+        }
+
+        private void GivenExistingFiles(TrackFile editionFile, TrackFile otherEditionFile = null)
         {
             Mocker.GetMock<IMediaFileService>()
                 .Setup(s => s.GetFilesByAlbum(It.IsAny<int>()))
-                .Returns(new List<TrackFile> { editionFile, otherEditionFile });
+                .Returns(new[] { editionFile, otherEditionFile }.Where(f => f != null).ToList());
 
             Mocker.GetMock<IMediaFileService>()
                 .Setup(s => s.GetFilesByRelease(1))
@@ -382,7 +396,7 @@ namespace NzbDrone.Core.Test.MediaFiles
         }
 
         [Test]
-        public void should_replace_every_file_of_the_album_when_one_release_is_monitored()
+        public void should_recycle_files_on_no_track_when_one_release_is_monitored()
         {
             var editionFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
             var otherFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 11).Build();
@@ -393,6 +407,78 @@ namespace NzbDrone.Core.Test.MediaFiles
 
             Mocker.GetMock<IMediaFileService>()
                 .Verify(v => v.Delete(It.Is<TrackFile>(f => f.Id == 10 || f.Id == 11), DeleteMediaFileReason.Upgrade), Times.Exactly(2));
+        }
+
+        // Tomvis fork (MUSIC-96): a grab missing some tracks of the monitored release must not recycle their files
+        [Test]
+        public void should_keep_files_of_tracks_the_import_does_not_bring()
+        {
+            var keptFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            var replacedFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 11).Build();
+            _approvedDecisions.First().Item.Release.Id = 1;
+            GivenExistingFiles(keptFile, replacedFile);
+            GivenFileTracks(
+                new Track { Id = 100, AlbumReleaseId = 1, TrackFileId = 10, ForeignRecordingId = "rec-missing" },
+                new Track { Id = 1, AlbumReleaseId = 1, TrackFileId = 11, ForeignRecordingId = "rec-1" });
+
+            Subject.Import(_approvedDecisions, true);
+
+            // file 11 is left to UpgradeTrackFile (mocked here), which recycles it as its track is imported
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.IsAny<TrackFile>(), It.IsAny<DeleteMediaFileReason>()), Times.Never());
+        }
+
+        [Test]
+        public void should_move_a_file_to_the_new_release_when_the_import_does_not_bring_its_recording()
+        {
+            var keptFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            var oldTrack = new Track { Id = 200, AlbumReleaseId = 2, TrackFileId = 10, ForeignRecordingId = "rec-missing" };
+            var newTrack = new Track { Id = 100, AlbumReleaseId = 1, TrackFileId = 0, ForeignRecordingId = "rec-missing" };
+            _approvedDecisions.First().Item.Release.Id = 1;
+            GivenExistingFiles(keptFile);
+            GivenFileTracks(oldTrack);
+            GivenReleaseTracks(1, newTrack);
+
+            Subject.Import(_approvedDecisions, true);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.IsAny<TrackFile>(), It.IsAny<DeleteMediaFileReason>()), Times.Never());
+            Mocker.GetMock<ITrackService>()
+                .Verify(v => v.SetFileIds(It.Is<List<Track>>(l => l.Count == 2 &&
+                                                                    l.Any(t => t.Id == 100 && t.TrackFileId == 10) &&
+                                                                    l.Any(t => t.Id == 200 && t.TrackFileId == 0))),
+                        Times.Once());
+        }
+
+        [Test]
+        public void should_recycle_a_file_of_the_old_release_when_the_import_brings_its_recording()
+        {
+            var replacedFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            var importedTrack = _approvedDecisions.First().Item.Tracks.Single();
+            _approvedDecisions.First().Item.Release.Id = 1;
+            GivenExistingFiles(replacedFile);
+            GivenFileTracks(new Track { Id = 200, AlbumReleaseId = 2, TrackFileId = 10, ForeignRecordingId = "rec-1" });
+            GivenReleaseTracks(1, new Track { Id = importedTrack.Id, AlbumReleaseId = 1, ForeignRecordingId = "rec-1" });
+
+            Subject.Import(_approvedDecisions, true);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.Is<TrackFile>(f => f.Id == 10), DeleteMediaFileReason.Upgrade), Times.Once());
+        }
+
+        [Test]
+        public void should_recycle_a_file_of_the_old_release_when_the_new_release_lacks_its_recording()
+        {
+            var droppedFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            _approvedDecisions.First().Item.Release.Id = 1;
+            GivenExistingFiles(droppedFile);
+            GivenFileTracks(new Track { Id = 200, AlbumReleaseId = 2, TrackFileId = 10, ForeignRecordingId = "rec-bonus" });
+            GivenReleaseTracks(1, new Track { Id = 100, AlbumReleaseId = 1, ForeignRecordingId = "rec-other" });
+
+            Subject.Import(_approvedDecisions, true);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.Is<TrackFile>(f => f.Id == 10), DeleteMediaFileReason.Upgrade), Times.Once());
         }
 
         [Test]
