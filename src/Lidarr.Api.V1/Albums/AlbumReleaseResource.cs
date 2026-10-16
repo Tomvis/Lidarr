@@ -20,6 +20,9 @@ namespace Lidarr.Api.V1.Albums
         public List<string> Label { get; set; }
         public string Format { get; set; }
         public bool Monitored { get; set; }
+
+        // Tomvis fork (MUSIC-102)
+        public bool Held { get; set; }
     }
 
     public static class AlbumReleaseResourceMapper
@@ -45,6 +48,7 @@ namespace Lidarr.Api.V1.Albums
                 Country = model.Country,
                 Label = model.Label,
                 Monitored = model.Monitored,
+                Held = model.Held,
                 Format = string.Join(", ",
                                      model.Media.OrderBy(x => x.Number)
                                      .GroupBy(x => x.Format)
@@ -73,7 +77,8 @@ namespace Lidarr.Api.V1.Albums
                 Country = resource.Country,
                 Media = resource.Media.ToModel(),
                 TrackCount = resource.TrackCount,
-                Monitored = resource.Monitored
+                Monitored = resource.Monitored,
+                Held = resource.Held
             };
         }
 

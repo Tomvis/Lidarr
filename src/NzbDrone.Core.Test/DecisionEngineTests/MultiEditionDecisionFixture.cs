@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FizzWare.NBuilder;
@@ -39,6 +40,53 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             };
 
             return album;
+        }
+
+        // Tomvis fork (MUSIC-102): Elvis Presley (1956) as MusicBrainz has it. The owned 2005 UK CD is the primary; a 1999 US CD
+        // with the same title is held. Its id is lower, so lowest-id alone would make it the primary.
+        public static Album Elvis(bool held = true)
+        {
+            var album = new Album { Id = 8, Title = "Elvis Presley", ReleaseDate = new DateTime(1956, 3, 23) };
+            album.AlbumReleases = new List<AlbumRelease>
+            {
+                Release(11, "Elvis Presley", null, 1999, "RCA", "United States", "CD", true, held),
+                Release(12, "Elvis Presley", null, 2005, "RCA", "United Kingdom", "CD", true, false),
+                Release(13, "Elvis Presley", null, 2010, "Music on Vinyl", "Netherlands", "12\" Vinyl", false, false),
+                Release(14, "Elvis Presley", "Reissue, Remastered, Stereo", 2005, "BMG", "United States", "CD", false, false),
+                Release(15, "Elvis Presley (Legacy Edition)", null, 2011, "Legacy", null, "CD", false, false)
+            };
+
+            return album;
+        }
+
+        // Tomvis fork (MUSIC-102): the original 1995 CD held as the DR target of an owned 2012 remaster
+        public static Album Remaster(string heldFormat = "CD")
+        {
+            var album = new Album { Id = 9, Title = "Album", ReleaseDate = new DateTime(1995, 1, 1) };
+            album.AlbumReleases = new List<AlbumRelease>
+            {
+                Release(21, "Album", null, 2012, "Sony Music", "Europe", "CD", true, false),
+                Release(22, "Album", null, 1995, "Epic", "Japan", heldFormat, true, true)
+            };
+
+            return album;
+        }
+
+        public static AlbumRelease Release(int id, string title, string disambiguation, int year, string label, string country, string format, bool monitored, bool held)
+        {
+            return new AlbumRelease
+            {
+                Id = id,
+                Title = title,
+                Disambiguation = disambiguation,
+                ReleaseDate = new DateTime(year, 1, 1),
+                Label = new List<string> { label },
+                Country = country == null ? new List<string>() : new List<string> { country },
+                Media = new List<Medium> { new Medium { Number = 1, Format = format } },
+                Monitored = monitored,
+                Held = held,
+                TrackCount = 12
+            };
         }
 
         public static RemoteAlbum Result(Album album, string title)
@@ -112,6 +160,93 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
         public void should_not_match_an_unmonitored_edition(string title)
         {
             AlbumEditions.TargetEdition(EditionTestData.Ihsahn(), title).Should().BeNull();
+        }
+    }
+
+    [TestFixture]
+    public class HeldEditionTargetFixture
+    {
+        [TestCase("Elvis Presley - Elvis Presley (1999) [FLAC]", 11)]
+        [TestCase("Elvis Presley - Elvis Presley [US CD] FLAC", 12)]
+        [TestCase("Elvis Presley - Elvis Presley (1956) [USA] FLAC", 11)]
+        [TestCase("Elvis Presley-Elvis_Presley-(RCA)-CD-FLAC-1999", 11)]
+        [TestCase("Elvis Presley - Elvis Presley (2005) [FLAC]", 12)]
+        [TestCase("Elvis Presley - Elvis Presley (1956) [FLAC]", 12)]
+        [TestCase("Elvis Presley - Elvis Presley [FLAC]", 12)]
+        [TestCase("Elvis Presley - Elvis Presley (1999) (2005 UK) [FLAC]", 12)]
+        [TestCase("Elvis Presley - Elvis Presley (1999 USA / 2005) [FLAC]", 11)]
+        [TestCase("Elvis Presley - Elvis Presley (1999 / 2005) [FLAC]", 12)]
+        public void should_match_a_held_edition_by_its_release_data(string title, int expectedRelease)
+        {
+            AlbumEditions.TargetEdition(EditionTestData.Elvis(), title).Id.Should().Be(expectedRelease);
+        }
+
+        [TestCase("Elvis Presley - Elvis Presley (1999) [FLAC]")]
+        [TestCase("Elvis Presley - Elvis Presley (2005) [FLAC]")]
+        public void should_match_by_words_only_without_a_held_edition(string title)
+        {
+            var album = EditionTestData.Elvis(false);
+            var primary = AlbumEditions.Primary(album, AlbumEditions.Monitored(album.AlbumReleases.Value));
+
+            AlbumEditions.TargetEdition(album, title).Should().Be(primary);
+        }
+
+        [TestCase("Artist - Album (1995) [FLAC]", 22)]
+        [TestCase("Artist - Album [Japan] FLAC", 22)]
+        [TestCase("Artist - Album (Japanese Edition) FLAC", 22)]
+        [TestCase("Artist - Album (2012 Remaster) [FLAC]", 21)]
+        [TestCase("Artist - Album (Remastered) [FLAC]", 21)]
+        [TestCase("Artist - Album (1995) (2012 Remaster) [FLAC]", 21)]
+        [TestCase("Artist - Album [FLAC]", 21)]
+        public void should_tell_an_original_from_a_remaster(string title, int expectedRelease)
+        {
+            AlbumEditions.TargetEdition(EditionTestData.Remaster(), title).Id.Should().Be(expectedRelease);
+        }
+
+        [TestCase("Artist - Album [WEB FLAC]", 22)]
+        [TestCase("Artist - Album [CD FLAC]", 21)]
+        [TestCase("Artist - Album (2012) [WEB FLAC]", 21)]
+        public void should_match_a_held_edition_by_format(string title, int expectedRelease)
+        {
+            AlbumEditions.TargetEdition(EditionTestData.Remaster("Digital Media"), title).Id.Should().Be(expectedRelease);
+        }
+
+        [Test]
+        public void a_held_edition_should_never_be_the_primary()
+        {
+            var album = EditionTestData.Elvis();
+
+            AlbumEditions.Primary(album, AlbumEditions.Monitored(album.AlbumReleases.Value)).Id.Should().Be(12);
+            AlbumEditions.IsHeld(album, album.AlbumReleases.Value[0]).Should().BeTrue();
+            AlbumEditions.IsHeld(album, album.AlbumReleases.Value[1]).Should().BeFalse();
+        }
+
+        [Test]
+        public void a_held_edition_alone_should_not_be_held()
+        {
+            var album = EditionTestData.Elvis();
+            album.AlbumReleases.Value[1].Monitored = false;
+
+            AlbumEditions.IsHeld(album, album.AlbumReleases.Value[0]).Should().BeFalse();
+        }
+
+        [Test]
+        public void a_held_edition_title_should_name_its_year()
+        {
+            var album = EditionTestData.Elvis();
+
+            AlbumEditions.EditionTitle(album, album.AlbumReleases.Value[0]).Should().Be("Elvis Presley (1999 CD United States)");
+        }
+
+        [Test]
+        public void a_refreshed_release_should_keep_its_hold()
+        {
+            var local = new AlbumRelease { Id = 1, Monitored = true, Held = true };
+            var remote = new AlbumRelease();
+
+            remote.UseDbFieldsFrom(local);
+
+            remote.Held.Should().BeTrue();
         }
     }
 
@@ -317,6 +452,59 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             });
 
             Mocker.GetMock<IDownloadService>().Verify(v => v.DownloadReport(It.IsAny<RemoteAlbum>(), null), Times.Once());
+        }
+    }
+
+    // Tomvis fork (MUSIC-102): a held edition has no files of its own, so a result matched to it is wanted although the
+    // owned edition meets cutoff, and a result nothing tells apart is judged by the owned edition's files
+    [TestFixture]
+    public class CutoffHeldEditionFixture : CoreTest<CutoffSpecification>
+    {
+        [SetUp]
+        public void Setup()
+        {
+            Mocker.Resolve<UpgradableSpecification>();
+            CustomFormatsTestHelpers.GivenCustomFormats();
+
+            var flac = new TrackFile { Id = 200, Quality = new QualityModel(Quality.FLAC) };
+
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.TracksWithoutFiles(8))
+                .Returns(new List<Track> { new Track { AlbumReleaseId = 11 } });
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(12))
+                .Returns(new List<Track> { new Track { AlbumReleaseId = 12, TrackFileId = 200 } });
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(11))
+                .Returns(new List<Track> { new Track { AlbumReleaseId = 11, TrackFileId = 0 } });
+
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFilesByAlbum(8))
+                .Returns(new List<TrackFile> { flac });
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFilesByRelease(12))
+                .Returns(new List<TrackFile> { flac });
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFilesByRelease(11))
+                .Returns(new List<TrackFile>());
+
+            Mocker.GetMock<ICustomFormatCalculationService>()
+                .Setup(x => x.ParseCustomFormat(It.IsAny<TrackFile>()))
+                .Returns(new List<CustomFormat>());
+        }
+
+        [Test]
+        public void should_accept_a_result_for_the_held_edition()
+        {
+            Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(), "Elvis Presley - Elvis Presley (1999) [FLAC]"), null)
+                .Accepted.Should().BeTrue();
+        }
+
+        [Test]
+        public void should_reject_a_result_nothing_tells_apart_from_the_owned_edition()
+        {
+            Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(), "Elvis Presley - Elvis Presley [FLAC]"), null)
+                .Accepted.Should().BeFalse();
         }
     }
 }

@@ -114,7 +114,21 @@ namespace Lidarr.Api.V1.Albums
             var updatedAlbum = resource.ToModel();
 
             album.ApplyChanges(updatedAlbum);
-            album.AlbumReleases = updatedAlbum.AlbumReleases;
+
+            // Tomvis fork (MUSIC-102): an edit sets only the release flags. The resource has no ReleaseDate or
+            // OldForeignReleaseIds, so taking its releases whole (upstream) wiped them on every album edit.
+            var existing = album.AlbumReleases?.Value?.ToDictionary(r => r.Id) ?? new Dictionary<int, AlbumRelease>();
+            album.AlbumReleases = updatedAlbum.AlbumReleases.Value.Select(r =>
+            {
+                if (!existing.TryGetValue(r.Id, out var release))
+                {
+                    return r;
+                }
+
+                release.Monitored = r.Monitored;
+                release.Held = r.Held;
+                return release;
+            }).ToList();
 
             return album;
         }

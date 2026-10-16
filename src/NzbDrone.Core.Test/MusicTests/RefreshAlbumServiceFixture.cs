@@ -493,7 +493,7 @@ namespace NzbDrone.Core.Test.MusicTests
                 .Verify(x => x.CarryOverMonitoring(It.IsAny<List<Track>>(), It.IsAny<List<Track>>()), Times.Never());
         }
 
-        private void GivenTwoMonitoredEditionsAndRemote(List<AlbumRelease> remote)
+        private void GivenTwoMonitoredEditionsAndRemote(List<AlbumRelease> remote, Action<List<AlbumRelease>> existing = null)
         {
             var newAlbum = Builder<Album>.CreateNew()
                 .With(x => x.ArtistMetadata = Builder<ArtistMetadata>.CreateNew().Build())
@@ -517,6 +517,8 @@ namespace NzbDrone.Core.Test.MusicTests
                 .With(x => x.ForeignReleaseId = "ExistingId3")
                 .With(x => x.Monitored = false)
                 .Build() as List<AlbumRelease>;
+
+            existing?.Invoke(existingReleases);
 
             Mocker.GetMock<IReleaseService>()
                 .Setup(x => x.GetReleasesForRefresh(It.IsAny<int>(), It.IsAny<List<string>>()))
@@ -579,6 +581,35 @@ namespace NzbDrone.Core.Test.MusicTests
                 .Verify(x => x.RefreshEntityInfo(It.Is<List<AlbumRelease>>(
                                                      l => l.Count == 4 &&
                                                      l.Where(y => y.Monitored).Select(y => y.ForeignReleaseId).OrderBy(y => y).SequenceEqual(new[] { "ExistingId1", "ExistingId2" })),
+                                                 It.IsAny<List<AlbumRelease>>(),
+                                                 It.IsAny<bool>(),
+                                                 It.IsAny<bool>()));
+        }
+
+        [Test]
+        public void refreshing_album_should_keep_a_held_edition_held()
+        {
+            var remote = Builder<AlbumRelease>.CreateListOfSize(3)
+                .All()
+                .With(x => x.Monitored = false)
+                .With(x => x.Held = false)
+                .TheFirst(1)
+                .With(x => x.ForeignReleaseId = "ExistingId1")
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "ExistingId2")
+                .TheNext(1)
+                .With(x => x.ForeignReleaseId = "ExistingId3")
+                .Build() as List<AlbumRelease>;
+
+            GivenTwoMonitoredEditionsAndRemote(remote, existing =>
+            {
+                existing.ForEach(x => x.Held = false);
+                existing[1].Held = true;
+            });
+
+            Mocker.GetMock<IRefreshAlbumReleaseService>()
+                .Verify(x => x.RefreshEntityInfo(It.Is<List<AlbumRelease>>(
+                                                     l => l.Where(y => y.Held).Select(y => y.ForeignReleaseId).SequenceEqual(new[] { "ExistingId2" })),
                                                  It.IsAny<List<AlbumRelease>>(),
                                                  It.IsAny<bool>(),
                                                  It.IsAny<bool>()));

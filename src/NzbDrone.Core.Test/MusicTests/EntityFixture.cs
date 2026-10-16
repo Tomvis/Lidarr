@@ -168,7 +168,8 @@ namespace NzbDrone.Core.Test.MusicTests
             var different = GivenAlbumRelease();
 
             // make item2 different in the property under consideration
-            var differentEntry = prop.GetValue(different);
+            // Tomvis fork (MUSIC-102): AutoFixture alternates bools, so with two (Monitored, Held) both releases share one
+            var differentEntry = prop.PropertyType == typeof(bool) ? !(bool)prop.GetValue(item1) : prop.GetValue(different);
             prop.SetValue(item2, differentEntry);
 
             item1.Should().NotBeSameAs(item2);

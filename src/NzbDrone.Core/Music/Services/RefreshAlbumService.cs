@@ -334,6 +334,9 @@ namespace NzbDrone.Core.Music
                 var mergedTargets = localChildren.Merged.Where(x => x.Item1.Monitored).Select(x => x.Item2).ToList();
                 localChildren.Added.Except(mergedTargets).ToList().ForEach(x => x.Monitored = false);
                 mergedTargets.ForEach(x => x.Monitored = true);
+
+                // Tomvis fork (MUSIC-102): and a held one its hold
+                localChildren.Merged.Where(x => x.Item1.Monitored && x.Item1.Held).ToList().ForEach(x => x.Item2.Held = true);
                 localChildren.Old.ForEach(x => x.Monitored = false);
 
                 if (!localChildren.Future.Any(x => x.Monitored))
