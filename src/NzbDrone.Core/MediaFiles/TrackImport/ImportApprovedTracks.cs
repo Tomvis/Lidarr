@@ -390,13 +390,18 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
 
                 if (albumImport.Where(e => e.Errors.Count == 0).ToList().Count > 0 && artist != null && album != null)
                 {
+                    // Tomvis fork (MUSIC-97): a file brought in from outside the library is a new download, as for
+                    // TrackImportedEvent; upstream keyed this on replaceExisting, so a ManualImport without it
+                    // sent no import notification
+                    var newDownload = replaceExisting || albumImport.Any(e => e.Errors.Count == 0 && !e.ImportDecision.Item.ExistingFile);
+
                     _eventAggregator.PublishEvent(new AlbumImportedEvent(
                         artist,
                         album,
                         release,
                         allImportedTrackFiles.Where(s => s.AlbumId == album.Id).ToList(),
                         allOldTrackFiles.Where(s => s.AlbumId == album.Id).ToList(),
-                        replaceExisting,
+                        newDownload,
                         downloadClientItem));
                 }
             }

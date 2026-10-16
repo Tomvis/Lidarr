@@ -153,6 +153,37 @@ namespace NzbDrone.Core.Test.MediaFiles
         }
 
         [Test]
+        public void should_publish_new_download_AlbumImportedEvent_for_files_from_outside_the_library_without_replacing()
+        {
+            GivenAlbum();
+            Subject.Import(new List<ImportDecision<LocalTrack>> { _approvedDecisions.First() }, false);
+
+            Mocker.GetMock<IEventAggregator>()
+                .Verify(v => v.PublishEvent(It.Is<AlbumImportedEvent>(e => e.NewDownload)), Times.Once());
+        }
+
+        [Test]
+        public void should_not_publish_new_download_AlbumImportedEvent_for_existing_files()
+        {
+            GivenAlbum();
+            var track = _approvedDecisions.First();
+            track.Item.ExistingFile = true;
+            Subject.Import(new List<ImportDecision<LocalTrack>> { track }, false);
+
+            Mocker.GetMock<IEventAggregator>()
+                .Verify(v => v.PublishEvent(It.Is<AlbumImportedEvent>(e => !e.NewDownload)), Times.Once());
+        }
+
+        private void GivenAlbum()
+        {
+            var album = _approvedDecisions.First().Item.Album;
+
+            Mocker.GetMock<IAlbumService>()
+                .Setup(s => s.GetAlbum(album.Id))
+                .Returns(album);
+        }
+
+        [Test]
         public void should_not_move_existing_files()
         {
             var track = _approvedDecisions.First();
