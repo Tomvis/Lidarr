@@ -27,6 +27,12 @@ Branch `enhanced` = upstream `develop` tag + fork commits. The image (`docker/Do
 - A rescan that reuses a TrackFile row (MUSIC-66) keeps its `SceneName`, `OriginalFilePath`, and its `ReleaseGroup`/`IndexerFlags` when the rescan finds none. Upstream rebuilt the row from disk alone, so every beets retag wiped the release name; custom formats then scored the bare filename and searches approved CF-only "upgrades" of the same release.
 - 2026-10-10 one-off backfill: 20,633/24,472 rows got `SceneName` from the grab their track's latest import came from (History `TrackFileImported.DownloadId` → `Grabbed`/`DownloadImported` title). Pre-backfill dump: `/mnt/Fast/backups/postgres/adhoc-music68-20261010-2019/`.
 
+## Imports keep tracks they don't bring (MUSIC-96)
+
+- Upstream's import of a download (`replaceExisting`) recycled every file of the album first, so a grab missing some tracks lost them. Now a file on a track of the imported release stays; `UpgradeTrackFile` replaces it only if the import brings that track.
+- After a release switch, a file whose recording the new release has but the import doesn't bring moves to that track (`SetFileIds`). Files whose recording the import brings, the new release lacks, or that sit on no track are recycled as upstream.
+- Backstop: beets-lidarr `lidarr_recycle_guard.py` (TrueNAS cron 100) goes report-only after this ships, then retires.
+
 ## Wanted tracks (MUSIC-64, phase 1: core)
 
 - `Tracks.Monitored` (migration 1000, default true): an album can want only some tracks of its monitored release. All wanted = upstream behaviour. Helpers: `NzbDrone.Core/Music/WantedTracks.cs`.
