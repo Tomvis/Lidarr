@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using FluentAssertions;
-using Moq;
 using NUnit.Framework;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.History;
