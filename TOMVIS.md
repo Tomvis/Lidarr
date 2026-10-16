@@ -10,6 +10,7 @@ Branch `enhanced` = upstream `develop` tag + fork commits. The image (`docker/Do
 
 ## Webhook additions
 
+- Download fires for a ManualImport of files from outside the artist folder (MUSIC-97). Upstream fired it only with `replaceExistingFiles`, so force-imports and inbox moves were silent.
 - `album.albumRelease` on Grab (the monitored release, i.e. Lidarr's import target) and on Download/upgrade (the release the files were imported as): `id`, `mbId`, `title`, `disambiguation`, `country`, `format` (`2xCD`), `trackCount`, `status`, `releaseDate`. Omitted when unknown.
 
 ## Editions (MUSIC-63)
