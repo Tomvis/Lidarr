@@ -38,6 +38,11 @@ Branch `enhanced` = upstream `develop` tag + fork commits. The image (`docker/Do
 - A rescan that reuses a TrackFile row (MUSIC-66) keeps its `SceneName`, `OriginalFilePath`, and its `ReleaseGroup`/`IndexerFlags` when the rescan finds none. Upstream rebuilt the row from disk alone, so every beets retag wiped the release name; custom formats then scored the bare filename and searches approved CF-only "upgrades" of the same release.
 - 2026-10-10 one-off backfill: 20,633/24,472 rows got `SceneName` from the grab their track's latest import came from (History `TrackFileImported.DownloadId` → `Grabbed`/`DownloadImported` title). Pre-backfill dump: `/mnt/Fast/backups/postgres/adhoc-music68-20261010-2019/`.
 
+## Retags don't re-import (MUSIC-100)
+
+- A rescan (Refresh Artist, RescanFolders with `Known`/`Matched`) skips identification for a changed file whose tags' release MBID and release-track MBID still name the one monitored-release track it is linked to. The row keeps its link and only gets the new size, mtime, quality and media info. Upstream re-identified every changed file, so a beets tag pass re-imported whole albums (MUSIC-60: 869) and could drift them to another release.
+- Files with no MBIDs, other MBIDs, an unmonitored release or several linked tracks take upstream's path. ManualImport and downloads (`Filter=None`, `NewDownload`) are unchanged.
+
 ## Imports keep tracks they don't bring (MUSIC-96)
 
 - Upstream's import of a download (`replaceExisting`) recycled every file of the album first, so a grab missing some tracks lost them. Now a file on a track of the imported release stays; `UpgradeTrackFile` replaces it only if the import brings that track.

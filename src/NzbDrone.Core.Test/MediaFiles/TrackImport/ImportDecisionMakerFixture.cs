@@ -411,5 +411,94 @@ namespace NzbDrone.Core.Test.MediaFiles.TrackImport
 
             ExceptionVerification.ExpectedErrors(1);
         }
+
+        private void GivenRescanOfLinkedFile(string tagReleaseId, string tagTrackId, bool releaseMonitored = true)
+        {
+            _idConfig = new ImportDecisionMakerConfig { Filter = FilterFilesType.Known };
+
+            Mocker.GetMock<IAudioTagService>()
+                  .Setup(s => s.ReadTags(It.IsAny<string>()))
+                  .Returns(new ParsedTrackInfo { ReleaseMBId = tagReleaseId, TrackMBId = tagTrackId });
+
+            Mocker.GetMock<IMediaFileService>()
+                  .Setup(s => s.GetFileWithPath(It.IsAny<List<string>>()))
+                  .Returns((List<string> paths) => paths.Select(p => new TrackFile
+                  {
+                      Path = p,
+                      AlbumId = 1,
+                      Tracks = new List<Track> { new Track { ForeignTrackId = "track-1", AlbumReleaseId = 5 } }
+                  }).ToList());
+
+            Mocker.GetMock<IReleaseService>()
+                  .Setup(s => s.GetReleaseByForeignReleaseId("release-1", true))
+                  .Returns(new AlbumRelease { Id = 5, ForeignReleaseId = "release-1", Monitored = releaseMonitored });
+
+            Mocker.GetMock<IAugmentingService>()
+                  .Setup(s => s.Augment(It.IsAny<LocalTrack>(), It.IsAny<bool>()));
+        }
+
+        [Test]
+        public void rescan_should_not_reidentify_a_changed_file_whose_tags_still_name_its_linked_track()
+        {
+            GivenRescanOfLinkedFile("release-1", "track-1");
+
+            var decisions = Subject.GetImportDecisions(_fileInfos, null, null, _idConfig);
+
+            Mocker.GetMock<IIdentificationService>()
+                  .Verify(s => s.Identify(It.Is<List<LocalTrack>>(l => l.Any()), It.IsAny<IdentificationOverrides>(), It.IsAny<ImportDecisionMakerConfig>()), Times.Never());
+            decisions.Should().ContainSingle().Which.Approved.Should().BeFalse();
+        }
+
+        [TestCase("release-2", "track-1")]
+        [TestCase("release-1", "track-2")]
+        [TestCase(null, "track-1")]
+        [TestCase("release-1", null)]
+        public void rescan_should_reidentify_a_changed_file_whose_tags_name_other_ids(string tagReleaseId, string tagTrackId)
+        {
+            GivenRescanOfLinkedFile(tagReleaseId, tagTrackId);
+
+            Subject.GetImportDecisions(_fileInfos, null, null, _idConfig);
+
+            Mocker.GetMock<IIdentificationService>()
+                  .Verify(s => s.Identify(It.Is<List<LocalTrack>>(l => l.Count == 1), It.IsAny<IdentificationOverrides>(), It.IsAny<ImportDecisionMakerConfig>()), Times.Once());
+        }
+
+        [Test]
+        public void rescan_should_reidentify_a_file_linked_to_an_unmonitored_release()
+        {
+            GivenRescanOfLinkedFile("release-1", "track-1", releaseMonitored: false);
+
+            Subject.GetImportDecisions(_fileInfos, null, null, _idConfig);
+
+            Mocker.GetMock<IIdentificationService>()
+                  .Verify(s => s.Identify(It.Is<List<LocalTrack>>(l => l.Count == 1), It.IsAny<IdentificationOverrides>(), It.IsAny<ImportDecisionMakerConfig>()), Times.Once());
+        }
+
+        [Test]
+        public void rescan_should_reidentify_when_the_release_lookup_throws()
+        {
+            GivenRescanOfLinkedFile("release-1", "track-1");
+            Mocker.GetMock<IReleaseService>()
+                  .Setup(s => s.GetReleaseByForeignReleaseId("release-1", true))
+                  .Throws(new System.InvalidOperationException("Sequence contains more than one element"));
+
+            Subject.GetImportDecisions(_fileInfos, null, null, _idConfig);
+
+            Mocker.GetMock<IIdentificationService>()
+                  .Verify(s => s.Identify(It.Is<List<LocalTrack>>(l => l.Count == 1), It.IsAny<IdentificationOverrides>(), It.IsAny<ImportDecisionMakerConfig>()), Times.Once());
+            ExceptionVerification.ExpectedWarns(1);
+        }
+
+        [Test]
+        public void manual_import_should_identify_even_when_tags_name_the_linked_track()
+        {
+            GivenRescanOfLinkedFile("release-1", "track-1");
+            _idConfig.Filter = FilterFilesType.None;
+
+            Subject.GetImportDecisions(_fileInfos, null, null, _idConfig);
+
+            Mocker.GetMock<IIdentificationService>()
+                  .Verify(s => s.Identify(It.Is<List<LocalTrack>>(l => l.Count == 1), It.IsAny<IdentificationOverrides>(), It.IsAny<ImportDecisionMakerConfig>()), Times.Once());
+        }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using NLog;
+using NzbDrone.Common;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Core.DecisionEngine;
@@ -53,6 +54,7 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
         private readonly IIdentificationService _identificationService;
         private readonly IRootFolderService _rootFolderService;
         private readonly IQualityProfileService _qualityProfileService;
+        private readonly IReleaseService _releaseService;
         private readonly Logger _logger;
 
         public ImportDecisionMaker(IEnumerable<IImportDecisionEngineSpecification<LocalTrack>> trackSpecifications,
@@ -63,6 +65,7 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
                                    IIdentificationService identificationService,
                                    IRootFolderService rootFolderService,
                                    IQualityProfileService qualityProfileService,
+                                   IReleaseService releaseService,
                                    Logger logger)
         {
             _trackSpecifications = trackSpecifications;
@@ -73,6 +76,7 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
             _identificationService = identificationService;
             _rootFolderService = rootFolderService;
             _qualityProfileService = qualityProfileService;
+            _releaseService = releaseService;
             _logger = logger;
         }
 
@@ -150,6 +154,13 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
 
             localTracks.ForEach(x => x.ExistingFile = !config.NewDownload);
 
+            if (config.Filter != FilterFilesType.None && !config.NewDownload)
+            {
+                var unchanged = TracksWithUnchangedIdentity(localTracks);
+                decisions.AddRange(unchanged.Select(x => new ImportDecision<LocalTrack>(x, new Rejection("Tags still name the linked track"))));
+                localTracks = localTracks.Except(unchanged).ToList();
+            }
+
             var releases = _identificationService.Identify(localTracks, idOverrides, config);
 
             var albums = releases.GroupBy(x => x.AlbumRelease?.Album?.Value.ForeignAlbumId);
@@ -195,6 +206,59 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
             }
 
             return decisions;
+        }
+
+        // A rescan re-identifies every changed file, so a tag-only retag (beets) re-imported whole albums (MUSIC-100).
+        // A file whose release and release-track MBIDs still name the monitored-release track it is linked to
+        // keeps its link; DiskScanService then only refreshes its size, mtime, quality and media info.
+        private List<LocalTrack> TracksWithUnchangedIdentity(List<LocalTrack> localTracks)
+        {
+            if (!localTracks.Any())
+            {
+                return new List<LocalTrack>();
+            }
+
+            var dbFiles = _mediaFileService.GetFileWithPath(localTracks.Select(x => x.Path).ToList())
+                .GroupBy(x => x.Path, PathEqualityComparer.Instance)
+                .Where(g => g.Count() == 1)
+                .ToDictionary(g => g.Key, g => g.Single(), PathEqualityComparer.Instance);
+            var releases = new Dictionary<string, AlbumRelease>();
+
+            return localTracks.Where(x =>
+            {
+                var releaseId = x.FileTrackInfo?.ReleaseMBId;
+                var trackId = x.FileTrackInfo?.TrackMBId;
+
+                if (releaseId.IsNullOrWhiteSpace() || trackId.IsNullOrWhiteSpace() ||
+                    !dbFiles.TryGetValue(x.Path, out var dbFile) || dbFile.AlbumId == 0)
+                {
+                    return false;
+                }
+
+                var linked = dbFile.Tracks?.Value;
+                if (linked == null || linked.Count != 1)
+                {
+                    return false;
+                }
+
+                if (!releases.TryGetValue(releaseId, out var release))
+                {
+                    try
+                    {
+                        release = _releaseService.GetReleaseByForeignReleaseId(releaseId, true);
+                    }
+                    catch (InvalidOperationException e)
+                    {
+                        _logger.Warn(e, "Ambiguous release {0}, re-identifying its files", releaseId);
+                    }
+
+                    releases[releaseId] = release;
+                }
+
+                var track = linked[0];
+                return release != null && release.Monitored && track.AlbumReleaseId == release.Id &&
+                       (track.ForeignTrackId == trackId || track.OldForeignTrackIds?.Contains(trackId) == true);
+            }).ToList();
         }
 
         private void EnsureData(LocalAlbumRelease release)
