@@ -31,6 +31,7 @@ Branch `enhanced` = upstream `develop` tag + fork commits. The image (`docker/Do
 - Not in core: catalog numbers (Lidarr doesn't store them), DR, the verdict. Tubifarry (slskd) still fits folders by durations, so same-title held editions mostly land on the primary there.
 - `PUT /api/v1/album` now sets only `monitored`/`held` on existing releases. Upstream wrote the resource's releases whole, and the resource has no `ReleaseDate` or `OldForeignReleaseIds`, so every album edit nulled them (every multi-edition album in prod had no release dates); an album refresh refills them.
 - Never auto-imported (MUSIC-95, `HeldEditionSpecification`): a new download is rejected ("awaiting edition judge") when identification picks a held edition, or when its grab title (Grabbed history, else the client's title) matches one, whatever identification picked: a same-tracklist mastering often identifies as the owned edition. It waits in the queue, import-blocked. The judge's pass = `ManualImport` pinned to the held `albumReleaseId` (ManualImport skips import specs); fail = `DELETE /queue/{id}?blocklist=true&removeFromClient=true`. Verdicts live in the pipeline, not Lidarr. Files already in the library are not checked.
+- While an album holds an edition, a result for any other edition is rejected unless that edition misses tracks (MUSIC-103, `HeldAlbumSpecification`). A held edition's searches also find copies of the owned edition, and those took custom-format upgrades over the owned files without the judge.
 
 ## Rescans keep download provenance (MUSIC-68)
 

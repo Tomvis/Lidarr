@@ -507,4 +507,55 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
                 .Accepted.Should().BeFalse();
         }
     }
+
+    // Tomvis fork (MUSIC-103): searches for a held edition also find the owned edition; those must not upgrade it
+    [TestFixture]
+    public class HeldAlbumSpecificationFixture : CoreTest<HeldAlbumSpecification>
+    {
+        private void GivenOwnedTracks(bool complete)
+        {
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(12))
+                .Returns(new List<Track> { new Track { AlbumReleaseId = 12, TrackFileId = 200 }, new Track { AlbumReleaseId = 12, TrackFileId = complete ? 201 : 0 } });
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(11))
+                .Returns(new List<Track> { new Track { AlbumReleaseId = 11, TrackFileId = 0 } });
+        }
+
+        [Test]
+        public void should_reject_a_result_for_the_complete_owned_edition_while_one_is_held()
+        {
+            GivenOwnedTracks(true);
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(), "Elvis Presley - Elvis Presley (2005) [FLAC]"), null)
+                .Accepted.Should().BeFalse();
+        }
+
+        [Test]
+        public void should_accept_a_result_for_the_held_edition()
+        {
+            GivenOwnedTracks(true);
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(), "Elvis Presley - Elvis Presley (1999) [FLAC]"), null)
+                .Accepted.Should().BeTrue();
+        }
+
+        [Test]
+        public void should_accept_a_result_for_the_owned_edition_when_it_misses_tracks()
+        {
+            GivenOwnedTracks(false);
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(), "Elvis Presley - Elvis Presley (2005) [FLAC]"), null)
+                .Accepted.Should().BeTrue();
+        }
+
+        [Test]
+        public void should_accept_an_upgrade_when_nothing_is_held()
+        {
+            GivenOwnedTracks(true);
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(false), "Elvis Presley - Elvis Presley (2005) [FLAC]"), null)
+                .Accepted.Should().BeTrue();
+        }
+    }
 }
