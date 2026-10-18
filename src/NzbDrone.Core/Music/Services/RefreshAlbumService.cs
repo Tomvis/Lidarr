@@ -329,6 +329,9 @@ namespace NzbDrone.Core.Music
             var multiEdition = localChildren.UpToDate.Concat(localChildren.Updated).Concat(localChildren.Merged.Select(x => x.Item1))
                 .Count(x => x.Monitored) > 1;
 
+            // Tomvis fork (MUSIC-135): a release MusicBrainz merged into another passes its lock on
+            localChildren.Merged.Where(x => x.Item1.Monitored && x.Item1.Locked).ToList().ForEach(x => x.Item2.Locked = true);
+
             if (multiEdition)
             {
                 var mergedTargets = localChildren.Merged.Where(x => x.Item1.Monitored).Select(x => x.Item2).ToList();

@@ -248,6 +248,17 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
 
             remote.Held.Should().BeTrue();
         }
+
+        [Test]
+        public void a_refreshed_release_should_keep_its_lock()
+        {
+            var local = new AlbumRelease { Id = 1, Monitored = true, Locked = true };
+            var remote = new AlbumRelease();
+
+            remote.UseDbFieldsFrom(local);
+
+            remote.Locked.Should().BeTrue();
+        }
     }
 
     [TestFixture]
@@ -556,6 +567,80 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
 
             Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(false), "Elvis Presley - Elvis Presley (2005) [FLAC]"), null)
                 .Accepted.Should().BeTrue();
+        }
+    }
+
+    // Tomvis fork (MUSIC-135): an edition bestedition swapped to is locked: custom-format upgrades must not replace it
+    [TestFixture]
+    public class LockedEditionSpecificationFixture : CoreTest<LockedEditionSpecification>
+    {
+        // the owned 2012 remaster, locked, with a 2016 "Remastered" reissue unmonitored
+        private static Album Owned(bool locked = true)
+        {
+            var album = new Album { Id = 9, Title = "Album", ReleaseDate = new DateTime(1995, 1, 1) };
+            album.AlbumReleases = new List<AlbumRelease>
+            {
+                EditionTestData.Release(21, "Album", null, 2012, "Sony Music", "Europe", "CD", true, false),
+                EditionTestData.Release(23, "Album", "Remastered", 2016, "Sony Music", "Europe", "CD", false, false)
+            };
+            album.AlbumReleases.Value[0].Locked = locked;
+
+            return album;
+        }
+
+        private void GivenTracks(bool ownedComplete)
+        {
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(21))
+                .Returns(new List<Track> { new Track { AlbumReleaseId = 21, TrackFileId = 300 }, new Track { AlbumReleaseId = 21, TrackFileId = ownedComplete ? 301 : 0 } });
+            Mocker.GetMock<ITrackService>()
+                .Setup(s => s.GetTracksByRelease(22))
+                .Returns(new List<Track> { new Track { AlbumReleaseId = 22, TrackFileId = 0 } });
+        }
+
+        [TestCase("Album - Album (2012) [FLAC]")]
+        [TestCase("Album - Album (2016 Remastered) [FLAC 24bit]")]
+        public void should_reject_an_upgrade_of_the_complete_locked_edition(string title)
+        {
+            GivenTracks(true);
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(Owned(), title), null).Accepted.Should().BeFalse();
+        }
+
+        [Test]
+        public void should_accept_a_result_when_the_locked_edition_misses_tracks()
+        {
+            GivenTracks(false);
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(Owned(), "Album - Album (2012) [FLAC]"), null).Accepted.Should().BeTrue();
+        }
+
+        [Test]
+        public void should_accept_an_upgrade_when_nothing_is_locked()
+        {
+            GivenTracks(true);
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(Owned(false), "Album - Album (2012) [FLAC]"), null).Accepted.Should().BeTrue();
+        }
+
+        [Test]
+        public void should_accept_a_result_for_a_held_edition_of_a_locked_album()
+        {
+            GivenTracks(true);
+            var album = EditionTestData.Remaster();
+            album.AlbumReleases.Value[0].Locked = true;
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(album, "Album - Album (1995 Japan) [FLAC]"), null).Accepted.Should().BeTrue();
+        }
+
+        [Test]
+        public void should_reject_a_result_for_the_locked_edition_while_another_is_held()
+        {
+            GivenTracks(true);
+            var album = EditionTestData.Remaster();
+            album.AlbumReleases.Value[0].Locked = true;
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(album, "Album - Album (2012 Europe) [FLAC]"), null).Accepted.Should().BeFalse();
         }
     }
 }

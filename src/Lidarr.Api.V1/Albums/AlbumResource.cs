@@ -127,6 +127,7 @@ namespace Lidarr.Api.V1.Albums
 
                 release.Monitored = r.Monitored;
                 release.Held = r.Held;
+                release.Locked = r.Locked;
                 return release;
             }).ToList();
 

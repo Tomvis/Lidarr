@@ -23,6 +23,7 @@ namespace NzbDrone.Core.Notifications.Webhook
             Status = release.Status;
             ReleaseDate = release.ReleaseDate;
             Held = release.Held;
+            Locked = release.Locked;
 
             // Tomvis fork (MUSIC-64): only when the release wants some of its tracks
             WantedTracks = NzbDrone.Core.Music.WantedTracks.IsPartial(release)
@@ -42,6 +43,9 @@ namespace NzbDrone.Core.Notifications.Webhook
 
         // Tomvis fork (MUSIC-102)
         public bool Held { get; set; }
+
+        // Tomvis fork (MUSIC-135)
+        public bool Locked { get; set; }
         public List<WebhookTrack> WantedTracks { get; set; }
     }
 }

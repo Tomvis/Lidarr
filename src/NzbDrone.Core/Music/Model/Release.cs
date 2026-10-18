@@ -34,6 +34,9 @@ namespace NzbDrone.Core.Music
         // Tomvis fork (MUSIC-102): an extra edition that is only a candidate (AlbumEditions.IsHeld)
         public bool Held { get; set; }
 
+        // Tomvis fork (MUSIC-135): an edition the bestedition pipeline swapped to; Lidarr doesn't upgrade it (LockedEditionSpecification)
+        public bool Locked { get; set; }
+
         // These are dynamically queried from other tables
         [MemberwiseEqualityIgnore]
         public LazyLoaded<Album> Album { get; set; }
@@ -67,6 +70,7 @@ namespace NzbDrone.Core.Music
             Album = other.Album;
             Monitored = other.Monitored;
             Held = other.Held;
+            Locked = other.Locked;
         }
     }
 }
