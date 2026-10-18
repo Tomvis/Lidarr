@@ -413,13 +413,21 @@ namespace NzbDrone.Core.MediaFiles.TrackImport.Manual
                 }
 
                 var downloadId = importAlbumId.Select(x => x.DownloadId).FirstOrDefault(x => x.IsNotNullOrWhiteSpace());
-                if (downloadId.IsNullOrWhiteSpace())
+
+                // Tomvis fork (MUSIC-126): a download no longer tracked imports like one without an id
+                var trackedDownload = downloadId.IsNullOrWhiteSpace() ? null : _trackedDownloadService.Find(downloadId);
+                if (trackedDownload == null)
                 {
                     imported.AddRange(_importApprovedTracks.Import(albumImportDecisions, message.ReplaceExistingFiles, null, message.ImportMode));
                 }
                 else
                 {
-                    var trackedDownload = _trackedDownloadService.Find(downloadId);
+                    // Tomvis fork (MUSIC-126): after a restart an ImportFailed download is never checked, so it has no import item yet
+                    if (trackedDownload.ImportItem == null)
+                    {
+                        trackedDownload.ImportItem = _provideImportItemService.ProvideImportItem(trackedDownload.DownloadItem, trackedDownload.ImportItem);
+                    }
+
                     var importResults = _importApprovedTracks.Import(albumImportDecisions, message.ReplaceExistingFiles, trackedDownload.DownloadItem, message.ImportMode);
 
                     imported.AddRange(importResults);
