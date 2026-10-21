@@ -7,7 +7,13 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0.421 AS build
 ARG LIDARRVERSION
 WORKDIR /src
 COPY . .
-RUN LIDARRVERSION=$LIDARRVERSION BUILD_SOURCEBRANCHNAME=nightly NuGetAudit=false \
+# HW-158: NuGet packages in a BuildKit cache mount -- COPY . . above invalidates every layer after it,
+# so without this each build restored every package from scratch. The context can hold forksync's
+# check build (_temp/obj assets): `dotnet clean` then fails NETSDK1064 against a package folder that
+# exists but lacks those packages, so drop it first.
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    rm -rf _temp _output _tests \
+    && LIDARRVERSION=$LIDARRVERSION BUILD_SOURCEBRANCHNAME=nightly NuGetAudit=false \
         ./build.sh --backend -r linux-musl-x64 -f net8.0 \
     && cd _output/net8.0/linux-musl-x64/publish \
     && rm -f Lidarr.Windows.* ServiceInstall.* ServiceUninstall.*
