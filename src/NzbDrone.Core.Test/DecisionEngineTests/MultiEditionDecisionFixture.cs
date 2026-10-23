@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using FizzWare.NBuilder;
 using FluentAssertions;
@@ -551,6 +552,16 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
                 .Accepted.Should().BeTrue();
         }
 
+        // Tomvis fork (MUSIC-174): a compilation of the held edition's year, matched to the self-titled album upstream
+        [Test]
+        public void should_reject_a_result_for_the_held_edition_that_names_another_album()
+        {
+            GivenOwnedTracks(true);
+
+            Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(), "Elvis Presley - The Essential Elvis Presley (1999) [AAC 256kbps] [WEB]"), null)
+                .Accepted.Should().BeFalse();
+        }
+
         [Test]
         public void should_accept_a_result_for_the_owned_edition_when_it_misses_tracks()
         {
@@ -567,6 +578,50 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
 
             Subject.IsSatisfiedBy(EditionTestData.Result(EditionTestData.Elvis(false), "Elvis Presley - Elvis Presley (2005) [FLAC]"), null)
                 .Accepted.Should().BeTrue();
+        }
+    }
+
+    // Tomvis fork (MUSIC-174): titles from real grabs (Slskd, Tidal, YouTube Music, Prowlarr)
+    [TestFixture]
+    public class NamesAlbumFixture
+    {
+        private static Album Album(string title, params string[] releaseTitles)
+        {
+            var album = new Album { Title = title };
+            album.AlbumReleases = releaseTitles.Select(t => new AlbumRelease { Title = t }).ToList();
+
+            return album;
+        }
+
+        [TestCase("Elvis Presley", "Elvis Presley", "Elvis Presley - Elvis Presley (1999) [FLAC]")]
+        [TestCase("Elvis Presley", "Elvis Presley", "Elvis Presley-Elvis_Presley-(RCA)-CD-FLAC-1999")]
+        [TestCase("Asphyx", "Death… the Brutal Way", "Asphyx - Death… the Brutal Way (2009) [FLAC 16bit/44.1kHz] [Death… the Brutal Way (2009 CD Germany)] [CD]")]
+        [TestCase("NILETTO", "Криолит", "NILETTO - 2022 - КРИОЛИТ")]
+        [TestCase("Carcass", "Swansong", "CARCASS [1995] [CD] Swansong (MMXX Edition) (Remastered-2020)")]
+        [TestCase("Katatonia", "Dethroned & Uncrowned", "Katatonia-Dethroned_And_Uncrowned-Limited-CD-FLAC-2013-FiH")]
+        [TestCase("Obscura", "Akróasis", "OBSCURA [2016] [CD] Akroasis")]
+        [TestCase("Septicflesh", "Έσοπτρον", "Septicflesh - ΕΣΟΠΤΡΟΝ (2013) [FLAC (M4A) Lossless] [WEB]")]
+        [TestCase("Al Bano Carrisi", "Libertà!", "Al Bano - Liberta (1987) [FLAC (M4A) Lossless] [WEB]")]
+        [TestCase("Steven Wilson", "The Raven That Refused to Sing (and Other Stories)", "Steven Wilson - The Raven That Refused to Sing {and Other Stories} (2013) [FLAC]")]
+        [TestCase("Darkthrone", "Pre‐Historic Metal", "(Crust Punk, Black Metal) [WEB] Darkthrone - Pre-Historic Metal - 2026, FLAC")]
+        [TestCase("Queen", "Queen II", "Queen - II {2011 Digital Remaster} (1987) [FLAC] [Queen II (1987 CD Japan)]", "II")]
+        [TestCase("Darkthrone", "Total Death", "Darkthrone – Total Death (2011 Reissue) - 2011 [Flac 16 Bits 44.1 kHz]")]
+        [TestCase("Madonna", "Erotica", "Madonna ‎- Erotica (Remastered) - 2012, FLAC (tracks+.cue), lossless")]
+        [TestCase("Porcupine Tree", "Lightbulb Sun", "Porcupine Tree \"Lightbulb Sun\" (2LP Reissue) 2008 - 2008, FLAC (tracks)")]
+        public void should_name_the_album(string artist, string album, string title, string releaseTitle = null)
+        {
+            AlbumEditions.NamesAlbum(Album(album, releaseTitle ?? album), artist, title).Should().BeTrue();
+        }
+
+        [TestCase("Elvis Presley", "Elvis Presley", "Elvis Presley - The Essential Elvis Presley (2006) [AAC 256kbps] [WEB]")]
+        [TestCase("ABBA", "Super Trouper", "ABBA - Mamma Mia! Here We Go Again (1989) [FLAC 24bit/96.0kHz] [Super Trouper (1989 CD United Kingdom)]")]
+        [TestCase("Pain of Salvation", "Entropia", "Pain of Salvation - Pain of Salvation (1999) [FLAC 16bit/44.1kHz] [Entropia (1999 CD Brazil)]")]
+        [TestCase("Madonna", "Madonna", "Madonna - Material Girl (1990) [FLAC 24bit/96.0kHz] [Madonna (1990 CD Canada)]")]
+        [TestCase("The Offering", "The Offering", "Offering - The Ultimate Offering (EP)")]
+        [TestCase("Кино", "45", "Кино (Виктор Цой) - Неремастированная CD-дискография - 45 (1982) [FLAC]")]
+        public void should_not_name_another_album(string artist, string album, string title)
+        {
+            AlbumEditions.NamesAlbum(Album(album, album), artist, title).Should().BeFalse();
         }
     }
 

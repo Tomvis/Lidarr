@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Parser.Model;
@@ -20,6 +22,11 @@ namespace NzbDrone.Core.Music
             "record", "recording", "music", "musik", "entertainment", "media", "production", "distribution", "group", "label",
             "company", "co", "ltd", "inc", "llc", "corp", "corporation", "gmbh", "international", "the", "of", "on", "and", "a"
         };
+
+        // Tomvis fork (MUSIC-174)
+        private static readonly Regex Brackets = new Regex(@"\([^()]*\)|\[[^\[\]]*\]|\{[^{}]*\}", RegexOptions.Compiled);
+        private static readonly Regex YearWord = new Regex(@"^(19|20)\d\d$", RegexOptions.Compiled);
+        private static readonly Regex TitleDash = new Regex(@"[\s\u200E\u200F]+[-\u2013\u2014]\s+", RegexOptions.Compiled);
 
         // Shorter names titles use for MusicBrainz countries
         private static readonly Dictionary<string, string[]> CountryAliases = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -204,6 +211,77 @@ namespace NzbDrone.Core.Music
             }
 
             return best.Release;
+        }
+
+        // Tomvis fork (MUSIC-174): the title names the album (or one of its release titles) as its title: outside brackets,
+        // with only the artist and years before it ("Artist - 2009 - Album", "ARTIST [1995] [CD] Album"). Checked after the
+        // first " - ", and in the whole title ("Queen - II" for "Queen II"), where a self-titled album must reach past the
+        // dash: "Elvis Presley - The Essential Elvis Presley (2006)" does not name "Elvis Presley", nor "Madonna - Material
+        // Girl" "Madonna".
+        public static bool NamesAlbum(Album album, string artistName, string title)
+        {
+            if (title.IsNullOrWhiteSpace())
+            {
+                return false;
+            }
+
+            var artistWords = OrderedWords(artistName).ToHashSet();
+            var albumTitles = new[] { album.Title }
+                .Concat(album.AlbumReleases?.Value?.Select(r => r.Title) ?? Enumerable.Empty<string>())
+                .Select(t => OrderedWords(Brackets.Replace(t ?? string.Empty, " ")))
+                .Where(w => w.Any())
+                .ToList();
+
+            var plain = Brackets.Replace(title, " ");
+            var dash = TitleDash.Match(plain);
+
+            var headWords = dash.Success ? OrderedWords(plain.Substring(0, dash.Index)) : new List<string>();
+
+            // (words, how many leading words a self-titled match must reach past)
+            var segments = dash.Success
+                ? new[] { (OrderedWords(plain.Substring(dash.Index + dash.Length)), 0), (OrderedWords(plain), headWords.Count) }
+                : new[] { (OrderedWords(plain), 0) };
+
+            foreach (var (words, head) in segments)
+            {
+                foreach (var albumWords in albumTitles)
+                {
+                    // the album is the artist's name, or what the title puts before its dash
+                    var selfTitled = albumWords.All(artistWords.Contains) || albumWords.SequenceEqual(headWords);
+
+                    foreach (var at in Occurrences(words, albumWords))
+                    {
+                        if ((!selfTitled || at + albumWords.Count > head) &&
+                            words.Take(at).All(w => artistWords.Contains(w) || YearWord.IsMatch(w)))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<int> Occurrences(List<string> words, List<string> part)
+        {
+            for (var i = 0; i + part.Count <= words.Count; i++)
+            {
+                if (words.Skip(i).Take(part.Count).SequenceEqual(part))
+                {
+                    yield return i;
+                }
+            }
+        }
+
+        // Words in order, accents and case folded, "&" as "and"
+        private static List<string> OrderedWords(string text)
+        {
+            var folded = new string((text ?? string.Empty).Replace("&", " and ").ToLowerInvariant().Normalize(NormalizationForm.FormD)
+                .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                .ToArray());
+
+            return Regex.Split(folded, @"[\W_]+").Where(w => w.Length > 0).ToList();
         }
 
         private static List<Clue> Clues(AlbumRelease release, int? originalYear)
