@@ -1,8 +1,8 @@
-import _ from 'lodash';
 import PropTypes from 'prop-types';
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { createSelector } from 'reselect';
+import sortByProp from 'Utilities/Array/sortByProp';
 import shortenList from 'Utilities/String/shortenList';
 import titleCase from 'Utilities/String/titleCase';
 import AlbumReleaseSelectInputSelectedValue from './AlbumReleaseSelectInputSelectedValue';
@@ -13,32 +13,33 @@ function createMapStateToProps() {
   return createSelector(
     (state, { albumReleases }) => albumReleases,
     (albumReleases) => {
-      const values = _.map(albumReleases.value, (albumRelease) => {
+      const sortedValues = albumReleases.value
+        .map((albumRelease) => {
+          const {
+            foreignReleaseId,
+            title,
+            disambiguation,
+            mediumCount,
+            trackCount,
+            country,
+            format
+          } = albumRelease;
 
-        const {
-          foreignReleaseId,
-          title,
-          disambiguation,
-          mediumCount,
-          trackCount,
-          country,
-          format
-        } = albumRelease;
-
-        return {
-          key: foreignReleaseId,
-          value: `${title}` +
+          return {
+            key: foreignReleaseId,
+            value: `${title}` +
             `${disambiguation ? ' (' : ''}${titleCase(disambiguation)}${disambiguation ? ')' : ''}` +
             `, ${mediumCount} med, ${trackCount} tracks` +
             `${country && country.length > 0 ? `, ${shortenList(country)}` : ''}` +
             `${format ? `, [${format}]` : ''}`
-        };
-      });
-
-      const sortedValues = _.orderBy(values, ['value']);
+          };
+        })
+        .sort(sortByProp('value'));
 
       // Tomvis fork (MUSIC-68): an album may monitor several releases (editions, MUSIC-63)
-      const value = _.map(_.filter(albumReleases.value, { monitored: true }), 'foreignReleaseId');
+      const value = albumReleases.value
+        .filter((release) => release.monitored)
+        .map((release) => release.foreignReleaseId);
 
       return {
         values: sortedValues,
@@ -63,13 +64,12 @@ class AlbumReleaseSelectInputConnector extends Component {
       return;
     }
 
-    const updatedReleases = _.map(albumReleases.value, (e) => ({ ...e, monitored: value.includes(e.foreignReleaseId) }));
+    const updatedReleases = albumReleases.value.map((e) => ({ ...e, monitored: value.includes(e.foreignReleaseId) }));
 
     this.props.onChange({ name, value: updatedReleases });
   };
 
   render() {
-
     return (
       <EnhancedSelectInput
         {...this.props}
