@@ -512,6 +512,68 @@ namespace NzbDrone.Core.Test.MediaFiles
                 .Verify(v => v.Delete(It.Is<TrackFile>(f => f.Id == 10), DeleteMediaFileReason.Upgrade), Times.Once());
         }
 
+        // Tomvis fork (MUSIC-177): a ManualImport without replaceExistingFiles switched the release but left every file
+        // on the old release's tracks; the imports then collided with those files at the same path
+        [Test]
+        public void should_move_a_file_to_the_imported_track_when_not_replacing()
+        {
+            var oldFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            var importedTrack = _approvedDecisions.First().Item.Tracks.Single();
+            _approvedDecisions.First().Item.Release.Id = 1;
+            GivenExistingFiles(oldFile);
+            GivenFileTracks(new Track { Id = 200, AlbumReleaseId = 2, TrackFileId = 10, ForeignRecordingId = "rec-1" });
+            GivenReleaseTracks(1, new Track { Id = importedTrack.Id, AlbumReleaseId = 1, ForeignRecordingId = "rec-1" });
+
+            // UpgradeTrackFile replaces the file it finds on the decision's own track; read it at call time,
+            // since the import later points the track at the new file
+            var seenFileIds = new List<int>();
+            Mocker.GetMock<IUpgradeMediaFiles>()
+                .Setup(s => s.UpgradeTrackFile(It.IsAny<TrackFile>(), It.IsAny<LocalTrack>(), It.IsAny<bool>()))
+                .Callback<TrackFile, LocalTrack, bool>((f, l, c) => seenFileIds.AddRange(l.Tracks.Where(t => t.Id == importedTrack.Id)
+                                                                                           .Select(t => t.TrackFile?.Value?.Id ?? 0)))
+                .Returns(new TrackFileMoveResult());
+
+            Subject.Import(_approvedDecisions, false);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.IsAny<TrackFile>(), It.IsAny<DeleteMediaFileReason>()), Times.Never());
+            Mocker.GetMock<ITrackService>()
+                .Verify(v => v.SetFileIds(It.Is<List<Track>>(l => l.Any(t => t.Id == importedTrack.Id && t.TrackFileId == 10) &&
+                                                                    l.Any(t => t.Id == 200 && t.TrackFileId == 0))),
+                        Times.Once());
+            seenFileIds.Should().Equal(10);
+        }
+
+        [Test]
+        public void should_move_a_file_the_import_does_not_bring_when_not_replacing()
+        {
+            var keptFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            _approvedDecisions.First().Item.Release.Id = 1;
+            GivenExistingFiles(keptFile);
+            GivenFileTracks(new Track { Id = 200, AlbumReleaseId = 2, TrackFileId = 10, ForeignRecordingId = "rec-missing" });
+            GivenReleaseTracks(1, new Track { Id = 100, AlbumReleaseId = 1, TrackFileId = 0, ForeignRecordingId = "rec-missing" });
+
+            Subject.Import(_approvedDecisions, false);
+
+            Mocker.GetMock<ITrackService>()
+                .Verify(v => v.SetFileIds(It.Is<List<Track>>(l => l.Any(t => t.Id == 100 && t.TrackFileId == 10))), Times.Once());
+        }
+
+        [Test]
+        public void should_not_recycle_a_file_the_new_release_lacks_when_not_replacing()
+        {
+            var droppedFile = Builder<TrackFile>.CreateNew().With(f => f.Id = 10).Build();
+            _approvedDecisions.First().Item.Release.Id = 1;
+            GivenExistingFiles(droppedFile);
+            GivenFileTracks(new Track { Id = 200, AlbumReleaseId = 2, TrackFileId = 10, ForeignRecordingId = "rec-bonus" });
+            GivenReleaseTracks(1, new Track { Id = 100, AlbumReleaseId = 1, ForeignRecordingId = "rec-other" });
+
+            Subject.Import(_approvedDecisions, false);
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(v => v.Delete(It.IsAny<TrackFile>(), It.IsAny<DeleteMediaFileReason>()), Times.Never());
+        }
+
         [Test]
         public void should_only_replace_files_of_the_imported_edition_when_several_are_monitored()
         {

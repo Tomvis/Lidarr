@@ -137,9 +137,16 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
                 // each imported track replaces only its own file (UpgradeTrackFile)
                 // Tomvis fork (MUSIC-96): every other album recycles only the files the new release can't hold,
                 // so a grab missing some tracks no longer loses them
-                if (replaceExisting && !WantedTracks.IsPartial(newRelease))
+                // Tomvis fork (MUSIC-177): without replaceExisting the release still switches below, so its files
+                // move too; left on the old release's tracks, the imports collided with them at the same path
+                if (!WantedTracks.IsPartial(newRelease))
                 {
-                    RemoveExistingTrackFiles(artist, album, FilesTheReleaseCannotHold(album, newRelease, decisionList));
+                    var cannotHold = FilesTheReleaseCannotHold(album, newRelease, decisionList, replaceExisting);
+
+                    if (replaceExisting)
+                    {
+                        RemoveExistingTrackFiles(artist, album, cannotHold);
+                    }
                 }
 
                 // set the correct release to be monitored before importing the new files
@@ -536,7 +543,7 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
         // import brings that track). After a release switch, a file whose recording the new release has but the import
         // doesn't bring moves to that track. The rest (recordings the import brings, the new release lacks, or no track
         // at all) are recycled as upstream did.
-        private List<TrackFile> FilesTheReleaseCannotHold(Album album, AlbumRelease newRelease, List<ImportDecision<LocalTrack>> decisions)
+        private List<TrackFile> FilesTheReleaseCannotHold(Album album, AlbumRelease newRelease, List<ImportDecision<LocalTrack>> decisions, bool replaceExisting)
         {
             var files = _mediaFileService.GetFilesByAlbum(album.Id);
 
@@ -545,9 +552,11 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
                 return files;
             }
 
+            // With replaceExisting a file whose recording the import brings is recycled up front; without it the
+            // file moves to the imported track, where UpgradeTrackFile replaces it
             var importedTrackIds = decisions.SelectMany(d => d.Item.Tracks).Select(t => t.Id).ToHashSet();
             var freeTracks = (_trackService.GetTracksByRelease(newRelease.Id) ?? new List<Track>())
-                .Where(t => !t.HasFile && !importedTrackIds.Contains(t.Id))
+                .Where(t => !t.HasFile && !(replaceExisting && importedTrackIds.Contains(t.Id)))
                 .ToList();
             var tracksByFile = (_trackService.GetTracksByFileId(files.Select(f => f.Id)) ?? new List<Track>())
                 .ToLookup(t => t.TrackFileId);
@@ -583,6 +592,16 @@ namespace NzbDrone.Core.MediaFiles.TrackImport
             if (relinked.Any())
             {
                 _trackService.SetFileIds(relinked);
+            }
+
+            // UpgradeTrackFile reads the file off the decision's own track instances, not the ones relinked above
+            var movedTo = relinked.Where(t => t.TrackFileId > 0 && importedTrackIds.Contains(t.Id))
+                .ToDictionary(t => t.Id, t => files.Single(f => f.Id == t.TrackFileId));
+
+            foreach (var track in decisions.SelectMany(d => d.Item.Tracks).Where(t => movedTo.ContainsKey(t.Id)))
+            {
+                track.TrackFileId = movedTo[track.Id].Id;
+                track.TrackFile = movedTo[track.Id];
             }
 
             return recycle;

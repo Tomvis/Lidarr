@@ -51,6 +51,7 @@ Branch `enhanced` = upstream `develop` tag + fork commits. The image (`docker/Do
 - Upstream's import of a download (`replaceExisting`) recycled every file of the album first, so a grab missing some tracks lost them. Now a file on a track of the imported release stays; `UpgradeTrackFile` replaces it only if the import brings that track.
 - After a release switch, a file whose recording the new release has but the import doesn't bring moves to that track (`SetFileIds`). Files whose recording the import brings, the new release lacks, or that sit on no track are recycled as upstream.
 - Backstop: beets-lidarr `lidarr_recycle_guard.py` (TrueNAS cron 100) goes report-only after this ships, then retires.
+- Without `replaceExisting` (ManualImport, rescans) the release still switches, so the files move too (MUSIC-177): a file whose recording the import brings moves to the imported track, where `UpgradeTrackFile` replaces it; nothing is recycled. Before, they stayed on the old release's tracks and every import collided with them at the same path (At the Gates: 15 of 17 unlinked).
 
 ## Wanted tracks (MUSIC-64, phase 1: core)
 
