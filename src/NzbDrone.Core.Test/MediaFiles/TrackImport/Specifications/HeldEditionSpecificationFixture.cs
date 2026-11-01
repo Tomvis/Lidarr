@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
+using Moq;
 using NUnit.Framework;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.History;
@@ -33,11 +35,11 @@ namespace NzbDrone.Core.Test.MediaFiles.TrackImport.Specifications
             return new LocalAlbumRelease(new List<LocalTrack>()) { AlbumRelease = release, NewDownload = newDownload };
         }
 
-        private DownloadClientItem Download(string clientTitle, string grabTitle = null)
+        private DownloadClientItem Download(string clientTitle, string grabTitle = null, int grabAlbumId = 9)
         {
             var history = grabTitle == null
                 ? new List<EntityHistory>()
-                : new List<EntityHistory> { new EntityHistory { EventType = EntityHistoryEventType.Grabbed, SourceTitle = grabTitle } };
+                : new List<EntityHistory> { new EntityHistory { EventType = EntityHistoryEventType.Grabbed, SourceTitle = grabTitle, AlbumId = grabAlbumId } };
 
             Mocker.GetMock<IHistoryService>()
                 .Setup(s => s.Find("dl1", EntityHistoryEventType.Grabbed))
@@ -72,6 +74,39 @@ namespace NzbDrone.Core.Test.MediaFiles.TrackImport.Specifications
         public void should_accept_a_download_grabbed_for_the_owned_edition()
         {
             var download = Download("Artist - Album (1995) [Japan] FLAC", "Artist - Album (2012 Remaster) [FLAC]");
+
+            Subject.IsSatisfiedBy(Importing(_owned), download).Accepted.Should().BeTrue();
+        }
+
+        private Album Sibling(bool holdsEdition)
+        {
+            var sibling = EditionTestData.Remaster();
+            sibling.Id = 10;
+            sibling.AlbumReleases.Value.ForEach(r => r.Album = sibling);
+            sibling.AlbumReleases.Value[1].Held = holdsEdition;
+
+            Mocker.GetMock<IAlbumService>()
+                .Setup(s => s.GetAlbums(It.Is<IEnumerable<int>>(ids => ids.Contains(10))))
+                .Returns(new List<Album> { sibling });
+
+            return sibling;
+        }
+
+        // MUSIC-194: a "Serenades + Crestfallen" folder grabbed for the EP's held edition imported into Serenades
+        [Test]
+        public void should_reject_a_download_grabbed_for_another_album_that_holds_an_edition()
+        {
+            Sibling(true);
+            var download = Download("Serenades - The Crestfallen EP", "Anathema - The Crestfallen EP (2025) [FLAC]", 10);
+
+            Subject.IsSatisfiedBy(Importing(_owned), download).Accepted.Should().BeFalse();
+        }
+
+        [Test]
+        public void should_accept_a_download_grabbed_for_another_album_without_a_held_edition()
+        {
+            Sibling(false);
+            var download = Download("Serenades - The Crestfallen EP", "Anathema - The Crestfallen EP (2012 Remaster) [FLAC]", 10);
 
             Subject.IsSatisfiedBy(Importing(_owned), download).Accepted.Should().BeTrue();
         }
